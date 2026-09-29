@@ -3,11 +3,13 @@ from collections import Counter
 
 from core.security_engine import SecurityEngine
 from core.incident_manager import IncidentManager
+
 from services.file_manager import FileManager
 from services.report_generator import ReportGenerator
 from services.log_history import LogHistory
 from services.event_timeline import EventTimeline
 from services.evidence_correlator import EvidenceCorrelator
+from services.evidence_integrity import EvidenceIntegrity
 
 
 class SOCDashboard:
@@ -24,14 +26,19 @@ class SOCDashboard:
         severity_counts = {
             level: 0
             for level in (
-                "LOW", "MEDIUM", "HIGH", "CRITICAL"
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+                "CRITICAL"
             )
         }
 
         status_counts = {
             status: 0
             for status in (
-                "OPEN", "INVESTIGATING", "RESOLVED"
+                "OPEN",
+                "INVESTIGATING",
+                "RESOLVED"
             )
         }
 
@@ -49,16 +56,15 @@ class SOCDashboard:
             has_brute_force_alert = False
 
             for alert in incident.alerts:
-                if (
-                    alert.threat_type
-                    != "Potential Brute Force"
-                ):
+                if alert.threat_type != "Potential Brute Force":
                     continue
 
                 has_brute_force_alert = True
 
                 event_ids = getattr(
-                    alert, "event_ids", []
+                    alert,
+                    "event_ids",
+                    []
                 )
 
                 if event_ids:
@@ -84,6 +90,7 @@ class SOCDashboard:
         print("\n" + "=" * 45)
         print("       CYBERSHIELD - MINI SOC")
         print("=" * 45)
+
         print("1. Run Security Scan")
         print("2. View Security Incidents")
         print("3. Investigate an Incident")
@@ -92,7 +99,9 @@ class SOCDashboard:
         print("6. Add Investigation Note")
         print("7. Export Incident Report")
         print("8. View SOC Event Timeline")
-        print("9. Exit")
+        print("9. Verify Exported Report")
+        print("10. Exit")
+
         print("=" * 45)
 
     def scan_menu(self):
@@ -115,10 +124,12 @@ class SOCDashboard:
                 "\nGenerated events:",
                 result["generated"]
             )
+
             print(
                 "New events saved:",
                 result["added"]
             )
+
             print(
                 "Total saved login events:",
                 result["total"]
@@ -139,7 +150,11 @@ class SOCDashboard:
         }
 
         alerts = self.engine.run_scan()
-        incidents = self.manager.correlate(alerts)
+
+        incidents = self.manager.correlate(
+            alerts
+        )
+
         self.manager.save_incidents()
 
         new_incidents = [
@@ -155,8 +170,15 @@ class SOCDashboard:
 
         print("\n===== SCAN SUMMARY =====")
         print("Scan completed!")
-        print(f"Detected alerts: {len(alerts)}")
-        print(f"New incidents: {len(new_incidents)}")
+
+        print(
+            f"Detected alerts: {len(alerts)}"
+        )
+
+        print(
+            f"New incidents: {len(new_incidents)}"
+        )
+
         print(
             "Total tracked incidents:",
             len(incidents)
@@ -166,11 +188,14 @@ class SOCDashboard:
 
         if not threat_counts:
             print("No threats detected.")
+
         else:
             for threat_type, count in sorted(
                 threat_counts.items()
             ):
-                print(f"  {threat_type}: {count}")
+                print(
+                    f"  {threat_type}: {count}"
+                )
 
         statistics = self.get_incident_statistics(
             incidents
@@ -178,9 +203,7 @@ class SOCDashboard:
 
         print(
             "\nUnique tracked failed-login events:",
-            statistics[
-                "unique_tracked_login_events"
-            ]
+            statistics["unique_tracked_login_events"]
         )
 
     def view_incidents(self):
@@ -209,7 +232,9 @@ class SOCDashboard:
                 event_id
                 for alert in login_alerts
                 for event_id in getattr(
-                    alert, "event_ids", []
+                    alert,
+                    "event_ids",
+                    []
                 )
             }
 
@@ -219,7 +244,11 @@ class SOCDashboard:
             )
 
             if any(
-                not getattr(alert, "event_ids", [])
+                not getattr(
+                    alert,
+                    "event_ids",
+                    []
+                )
                 for alert in login_alerts
             ):
                 print(
@@ -243,10 +272,7 @@ class SOCDashboard:
         found = False
 
         for alert in incident.alerts:
-            if (
-                alert.threat_type
-                != "Potential Brute Force"
-            ):
+            if alert.threat_type != "Potential Brute Force":
                 continue
 
             found = True
@@ -256,7 +282,9 @@ class SOCDashboard:
             )
 
             attack_window = (
-                self.manager.get_attack_window(alert)
+                self.manager.get_attack_window(
+                    alert
+                )
             )
 
             if attack_window:
@@ -266,13 +294,16 @@ class SOCDashboard:
                     "Attack start:",
                     start.isoformat()
                 )
+
                 print(
                     "Attack end:",
                     end.isoformat()
                 )
 
             event_ids = getattr(
-                alert, "event_ids", []
+                alert,
+                "event_ids",
+                []
             )
 
             if event_ids:
@@ -280,6 +311,7 @@ class SOCDashboard:
                     "Unique tracked events:",
                     len(set(event_ids))
                 )
+
             else:
                 print(
                     "Exact event count: unavailable "
@@ -306,26 +338,43 @@ class SOCDashboard:
             "\nEnter Incident ID: "
         ).strip()
 
-        selected = self.find_incident(incident_id)
+        selected = self.find_incident(
+            incident_id
+        )
 
         if selected is None:
             print("Incident not found!")
             return
 
         print("\n===== INCIDENT DETAILS =====")
+
         selected.display()
 
-        self.show_attack_details(selected)
+        self.show_attack_details(
+            selected
+        )
 
-        print("\n===== INVESTIGATION NOTES =====")
+        print(
+            "\n===== INVESTIGATION NOTES ====="
+        )
 
         if not selected.notes:
-            print("No investigation notes yet.")
+            print(
+                "No investigation notes yet."
+            )
 
         for note in selected.notes:
-            print(f"\nAnalyst: {note['analyst']}")
-            print(f"Time: {note['timestamp']}")
-            print(f"Note: {note['message']}")
+            print(
+                f"\nAnalyst: {note['analyst']}"
+            )
+
+            print(
+                f"Time: {note['timestamp']}"
+            )
+
+            print(
+                f"Note: {note['message']}"
+            )
 
         print("\n===== RELATED ALERTS =====")
 
@@ -333,7 +382,10 @@ class SOCDashboard:
             alert.display()
 
         while True:
-            print("\n===== INVESTIGATION ACTIONS =====")
+            print(
+                "\n===== INVESTIGATION ACTIONS ====="
+            )
+
             print("1. Mark OPEN")
             print("2. Mark INVESTIGATING")
             print("3. Mark RESOLVED")
@@ -345,12 +397,17 @@ class SOCDashboard:
             ).strip()
 
             if choice == "4":
-                result = EvidenceCorrelator.find_evidence(
-                    selected,
-                    self.manager
+                result = (
+                    EvidenceCorrelator.find_evidence(
+                        selected,
+                        self.manager
+                    )
                 )
 
-                EvidenceCorrelator.display(result)
+                EvidenceCorrelator.display(
+                    result
+                )
+
                 continue
 
             if choice == "5":
@@ -371,7 +428,10 @@ class SOCDashboard:
                 statuses[choice]
             )
 
-            print("Incident status updated.")
+            print(
+                "Incident status updated."
+            )
+
             return
 
     def view_report(self):
@@ -380,49 +440,81 @@ class SOCDashboard:
         )
 
         if not report:
-            print("No security report available.")
+            print(
+                "No security report available."
+            )
             return
 
-        print("\n===== LATEST SECURITY REPORT =====")
+        print(
+            "\n===== LATEST SECURITY REPORT ====="
+        )
+
         print(
             "Scan time:",
-            report.get("scan_time", "Unknown")
+            report.get(
+                "scan_time",
+                "Unknown"
+            )
         )
+
         print(
             "Total alerts:",
-            report.get("total_alerts", 0)
+            report.get(
+                "total_alerts",
+                0
+            )
         )
 
         threat_counts = Counter()
 
-        for alert in report.get("alerts", []):
+        for alert in report.get(
+            "alerts",
+            []
+        ):
             severity = alert.get(
-                "severity", "UNKNOWN"
+                "severity",
+                "UNKNOWN"
             )
 
             threat_type = alert.get(
-                "threat_type", "Unknown Threat"
+                "threat_type",
+                "Unknown Threat"
             )
 
-            print(f"[{severity}] {threat_type}")
+            print(
+                f"[{severity}] {threat_type}"
+            )
+
             threat_counts[threat_type] += 1
 
-        print("\n===== THREAT SUMMARY =====")
+        print(
+            "\n===== THREAT SUMMARY ====="
+        )
 
         if not threat_counts:
-            print("No threats in the latest report.")
+            print(
+                "No threats in the latest report."
+            )
+
         else:
             for threat_type, count in sorted(
                 threat_counts.items()
             ):
-                print(f"{threat_type}: {count}")
+                print(
+                    f"{threat_type}: {count}"
+                )
 
     def view_statistics(self):
-        statistics = self.get_incident_statistics(
-            self.get_incidents()
+        statistics = (
+            self.get_incident_statistics(
+                self.get_incidents()
+            )
         )
 
-        print("\n===== SOC STATISTICS =====")
+        print(
+            "\n===== SOC STATISTICS ====="
+        )
+
         print(
             "Total incidents:",
             statistics["total_incidents"]
@@ -433,25 +525,29 @@ class SOCDashboard:
         for severity, count in (
             statistics["severity"].items()
         ):
-            print(f"{severity}: {count}")
+            print(
+                f"{severity}: {count}"
+            )
 
         print("\n===== BY STATUS =====")
 
         for status, count in (
             statistics["status"].items()
         ):
-            print(f"{status}: {count}")
+            print(
+                f"{status}: {count}"
+            )
 
         print("\n===== LOGIN THREATS =====")
+
         print(
             "Brute-force incidents:",
             statistics["brute_force_incidents"]
         )
+
         print(
             "Unique tracked failed-login events:",
-            statistics[
-                "unique_tracked_login_events"
-            ]
+            statistics["unique_tracked_login_events"]
         )
 
         if statistics["legacy_login_alerts"]:
@@ -459,6 +555,7 @@ class SOCDashboard:
                 "Legacy login alerts without IDs:",
                 statistics["legacy_login_alerts"]
             )
+
             print(
                 "Historical event totals may be "
                 "higher than the tracked count."
@@ -474,10 +571,14 @@ class SOCDashboard:
             "\nEnter Incident ID: "
         ).strip()
 
-        selected = self.find_incident(incident_id)
+        selected = self.find_incident(
+            incident_id
+        )
 
         if selected is None:
-            print("Incident not found!")
+            print(
+                "Incident not found!"
+            )
             return
 
         analyst = input(
@@ -494,14 +595,16 @@ class SOCDashboard:
                 analyst,
                 message
             )
+
         except ValueError as error:
             print(error)
             return
 
-        print("Investigation note saved.")
+        print(
+            "Investigation note saved."
+        )
 
     def export_incident_report(self):
-    
         self.view_incidents()
 
         if not self.manager.incidents:
@@ -511,10 +614,14 @@ class SOCDashboard:
             "\nEnter Incident ID: "
         ).strip()
 
-        selected = self.find_incident(incident_id)
+        selected = self.find_incident(
+            incident_id
+        )
 
         if selected is None:
-            print("Incident not found!")
+            print(
+                "Incident not found!"
+            )
             return
 
         print("\n1. Export JSON")
@@ -527,63 +634,126 @@ class SOCDashboard:
         ).strip()
 
         if choice == "4":
-            print("Export cancelled.")
+            print(
+                "Export cancelled."
+            )
             return
 
-        if choice not in ("1", "2", "3"):
-            print("Invalid report format.")
+        if choice not in (
+            "1",
+            "2",
+            "3"
+        ):
+            print(
+                "Invalid report format."
+            )
             return
 
-        # Collect evidence once so JSON and PDF
-        # use the same snapshot.
-        evidence = EvidenceCorrelator.find_evidence(
-            selected,
-            self.manager
+        evidence = (
+            EvidenceCorrelator.find_evidence(
+                selected,
+                self.manager
+            )
         )
 
-        print("\n===== EVIDENCE SUMMARY =====")
+        print(
+            "\n===== EVIDENCE SUMMARY ====="
+        )
+
         print(
             "Exact matches:",
-            len(evidence["exact_matches"])
+            len(
+                evidence["exact_matches"]
+            )
         )
+
         print(
             "Approximate legacy matches:",
-            len(evidence["legacy_matches"])
+            len(
+                evidence["legacy_matches"]
+            )
         )
+
         print(
             "Missing tracked events:",
             evidence["missing_tracked_events"]
         )
 
-        if choice in ("1", "3"):
+        if choice in (
+            "1",
+            "3"
+        ):
             json_path = (
                 ReportGenerator.export_incident(
                     selected,
                     evidence=evidence
                 )
             )
-            print(f"JSON report: {json_path}")
 
-        if choice in ("2", "3"):
+            json_manifest = (
+                EvidenceIntegrity.create_manifest(
+                    json_path
+                )
+            )
+
+            print(
+                f"JSON report: {json_path}"
+            )
+
+            print(
+                f"SHA-256 manifest: {json_manifest}"
+            )
+
+        if choice in (
+            "2",
+            "3"
+        ):
             pdf_path = (
                 ReportGenerator.export_incident_pdf(
                     selected,
                     evidence=evidence
                 )
             )
-            print(f"PDF report: {pdf_path}")
+
+            pdf_manifest = (
+                EvidenceIntegrity.create_manifest(
+                    pdf_path
+                )
+            )
+
+            print(
+                f"PDF report: {pdf_path}"
+            )
+
+            print(
+                f"SHA-256 manifest: {pdf_manifest}"
+            )
+
     def view_event_timeline(self):
-        print("\n===== EVENT TIMELINE =====")
-        print("1. View all login events")
-        print("2. Filter login events")
-        print("3. Cancel")
+        print(
+            "\n===== EVENT TIMELINE ====="
+        )
+
+        print(
+            "1. View all login events"
+        )
+
+        print(
+            "2. Filter login events"
+        )
+
+        print(
+            "3. Cancel"
+        )
 
         choice = input(
             "Select an option: "
         ).strip()
 
         if choice == "3":
-            print("Timeline cancelled.")
+            print(
+                "Timeline cancelled."
+            )
             return
 
         if choice == "1":
@@ -604,9 +774,12 @@ class SOCDashboard:
             ).strip().upper()
 
             if status and status not in (
-                "SUCCESS", "FAILED"
+                "SUCCESS",
+                "FAILED"
             ):
-                print("Invalid login status.")
+                print(
+                    "Invalid login status."
+                )
                 return
 
             start_time = input(
@@ -624,15 +797,100 @@ class SOCDashboard:
                     start_time=start_time or None,
                     end_time=end_time or None
                 )
+
             except ValueError as error:
-                print(f"Timeline error: {error}")
+                print(
+                    f"Timeline error: {error}"
+                )
                 return
 
         else:
-            print("Invalid choice.")
+            print(
+                "Invalid choice."
+            )
             return
 
-        EventTimeline.display(events)
+        EventTimeline.display(
+            events
+        )
+
+    def verify_exported_report(self):
+        print(
+            "\n===== VERIFY EXPORTED REPORT ====="
+        )
+
+        report_path = input(
+            "Enter JSON or PDF report path: "
+        ).strip()
+
+        if not report_path:
+            print(
+                "No report path provided."
+            )
+            return
+
+        result = (
+            EvidenceIntegrity.verify_report(
+                report_path
+            )
+        )
+
+        status = result["status"]
+
+        print(
+            "\nVerification status:",
+            status
+        )
+
+        print(
+            "Report:",
+            result["report"]
+        )
+
+        if status == "VERIFIED":
+            print(
+                "The report matches "
+                "its SHA-256 manifest."
+            )
+
+            print(
+                "SHA-256:",
+                result["actual_sha256"]
+            )
+
+        elif status == "MODIFIED":
+            print(
+                "WARNING: The report no longer "
+                "matches its original manifest."
+            )
+
+            print(
+                "Expected SHA-256:",
+                result["expected_sha256"]
+            )
+
+            print(
+                "Actual SHA-256:",
+                result["actual_sha256"]
+            )
+
+        elif status == "REPORT_MISSING":
+            print(
+                "The manifest exists, "
+                "but the report is missing."
+            )
+
+        elif status == "MANIFEST_MISSING":
+            print(
+                "No SHA-256 manifest was found "
+                "for this report."
+            )
+
+        elif status == "INVALID_MANIFEST":
+            print(
+                "The SHA-256 manifest is invalid "
+                "or cannot be read."
+            )
 
     def start(self):
         while True:
@@ -667,13 +925,19 @@ class SOCDashboard:
                 self.view_event_timeline()
 
             elif choice == "9":
-                print("Exiting CyberShield...")
+                self.verify_exported_report()
+
+            elif choice == "10":
+                print(
+                    "Exiting CyberShield..."
+                )
                 break
 
             else:
-                print("Invalid choice. Try again.")
+                print(
+                    "Invalid choice. Try again."
+                )
 
 
 if __name__ == "__main__":
-    dashboard = SOCDashboard()
-    dashboard.start()
+    SOCDashboard().start()

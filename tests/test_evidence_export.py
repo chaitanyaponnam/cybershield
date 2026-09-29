@@ -172,6 +172,22 @@ class TestEvidenceExport(unittest.TestCase):
             "INC-TEST": self.incident
         }
 
+        json_path = (
+            Path(self.temp_dir.name)
+            / "incident_test.json"
+        )
+        pdf_path = (
+            Path(self.temp_dir.name)
+            / "incident_test.pdf"
+        )
+
+        json_manifest = (
+            Path(str(json_path) + ".sha256.json")
+        )
+        pdf_manifest = (
+            Path(str(pdf_path) + ".sha256.json")
+        )
+
         with (
             patch.object(
                 dashboard,
@@ -191,19 +207,30 @@ class TestEvidenceExport(unittest.TestCase):
                 return_value=self.evidence
             ) as find_evidence,
             patch(
-                "main.ReportGenerator.export_incident"
+                "main.ReportGenerator.export_incident",
+                return_value=json_path
             ) as export_json,
             patch(
-                "main.ReportGenerator.export_incident_pdf"
+                "main.ReportGenerator.export_incident_pdf",
+                return_value=pdf_path
             ) as export_pdf,
+            patch(
+                "main.EvidenceIntegrity.create_manifest",
+                side_effect=[
+                    json_manifest,
+                    pdf_manifest
+                ]
+            ) as create_manifest,
         ):
             dashboard.export_incident_report()
 
+        # Evidence must be collected only once.
         find_evidence.assert_called_once_with(
             self.incident,
             dashboard.manager
         )
 
+        # Both reports must use the same evidence snapshot.
         export_json.assert_called_once_with(
             self.incident,
             evidence=self.evidence
@@ -212,6 +239,22 @@ class TestEvidenceExport(unittest.TestCase):
         export_pdf.assert_called_once_with(
             self.incident,
             evidence=self.evidence
+        )
+
+        # A separate manifest must be created for each report.
+        self.assertEqual(
+            create_manifest.call_count,
+            2
+        )
+
+        self.assertEqual(
+            create_manifest.call_args_list[0].args,
+            (json_path,)
+        )
+
+        self.assertEqual(
+            create_manifest.call_args_list[1].args,
+            (pdf_path,)
         )
 
     def test_cancel_does_not_collect_evidence(self):
@@ -240,10 +283,14 @@ class TestEvidenceExport(unittest.TestCase):
             patch(
                 "main.EvidenceCorrelator.find_evidence"
             ) as find_evidence,
+            patch(
+                "main.EvidenceIntegrity.create_manifest"
+            ) as create_manifest,
         ):
             dashboard.export_incident_report()
 
         find_evidence.assert_not_called()
+        create_manifest.assert_not_called()
 
 
 if __name__ == "__main__":
