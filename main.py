@@ -7,6 +7,7 @@ from services.file_manager import FileManager
 from services.report_generator import ReportGenerator
 from services.log_history import LogHistory
 from services.event_timeline import EventTimeline
+from services.evidence_correlator import EvidenceCorrelator
 
 
 class SOCDashboard:
@@ -331,34 +332,47 @@ class SOCDashboard:
         for alert in selected.alerts:
             alert.display()
 
-        print("\n1. Mark OPEN")
-        print("2. Mark INVESTIGATING")
-        print("3. Mark RESOLVED")
-        print("4. Cancel")
+        while True:
+            print("\n===== INVESTIGATION ACTIONS =====")
+            print("1. Mark OPEN")
+            print("2. Mark INVESTIGATING")
+            print("3. Mark RESOLVED")
+            print("4. View Login Evidence")
+            print("5. Return to Main Menu")
 
-        choice = input(
-            "Select status: "
-        ).strip()
+            choice = input(
+                "Select an option: "
+            ).strip()
 
-        statuses = {
-            "1": "OPEN",
-            "2": "INVESTIGATING",
-            "3": "RESOLVED"
-        }
+            if choice == "4":
+                result = EvidenceCorrelator.find_evidence(
+                    selected,
+                    self.manager
+                )
 
-        if choice == "4":
+                EvidenceCorrelator.display(result)
+                continue
+
+            if choice == "5":
+                return
+
+            statuses = {
+                "1": "OPEN",
+                "2": "INVESTIGATING",
+                "3": "RESOLVED"
+            }
+
+            if choice not in statuses:
+                print("Invalid choice!")
+                continue
+
+            self.manager.update_incident(
+                incident_id,
+                statuses[choice]
+            )
+
+            print("Incident status updated.")
             return
-
-        if choice not in statuses:
-            print("Invalid choice!")
-            return
-
-        self.manager.update_incident(
-            incident_id,
-            statuses[choice]
-        )
-
-        print("Incident status updated.")
 
     def view_report(self):
         report = FileManager.load_data(
@@ -385,6 +399,7 @@ class SOCDashboard:
             severity = alert.get(
                 "severity", "UNKNOWN"
             )
+
             threat_type = alert.get(
                 "threat_type", "Unknown Threat"
             )
@@ -468,6 +483,7 @@ class SOCDashboard:
         analyst = input(
             "Analyst name: "
         ).strip()
+
         message = input(
             "Investigation note: "
         ).strip()
@@ -515,6 +531,7 @@ class SOCDashboard:
                     selected
                 )
             )
+
             print(f"JSON report: {json_path}")
 
         if choice in ("2", "3"):
@@ -523,6 +540,7 @@ class SOCDashboard:
                     selected
                 )
             )
+
             print(f"PDF report: {pdf_path}")
 
         if choice == "4":
