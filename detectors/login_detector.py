@@ -20,7 +20,7 @@ class LoginDetector(ThreatDetector):
         failures = defaultdict(list)
         alerts = []
 
-        # Collect failed login timestamps by source IP
+        # Collect failed logins by source IP.
         for event in events:
             if event["status"] != "FAILED":
                 continue
@@ -32,40 +32,49 @@ class LoginDetector(ThreatDetector):
 
             failures[ip].append(timestamp)
 
-        # Analyze each IP independently
+        # Analyze each IP independently.
         for ip, timestamps in failures.items():
             timestamps.sort()
 
             left = 0
+            right = 0
 
-            for right, current_time in enumerate(timestamps):
+            while right < len(timestamps):
+                current_time = timestamps[right]
 
-                # Keep only failures within the time window
-                while current_time - timestamps[left] > self.window:
+                # Remove failures outside the window.
+                while (
+                    left <= right
+                    and current_time - timestamps[left]
+                    > self.window
+                ):
                     left += 1
 
                 count = right - left + 1
 
                 if count >= self.threshold:
-
-                    # Record the actual attack window
                     attack_start = timestamps[left]
                     attack_end = current_time
 
-                    alert = Alert(
-                        "Potential Brute Force",
-                        "HIGH",
-                        ip,
-                        (
-                            f"{count} failed logins between "
-                            f"{attack_start.isoformat()} and "
-                            f"{attack_end.isoformat()}"
+                    alerts.append(
+                        Alert(
+                            "Potential Brute Force",
+                            "HIGH",
+                            ip,
+                            (
+                                f"{count} failed logins between "
+                                f"{attack_start.isoformat()} and "
+                                f"{attack_end.isoformat()}"
+                            )
                         )
                     )
 
-                    alerts.append(alert)
+                    # Start looking for another attack
+                    # after this detected group.
+                    right += 1
+                    left = right
+                    continue
 
-                    # Generate one alert per IP per scan
-                    break
+                right += 1
 
         return alerts
