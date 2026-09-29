@@ -501,6 +501,7 @@ class SOCDashboard:
         print("Investigation note saved.")
 
     def export_incident_report(self):
+    
         self.view_incidents()
 
         if not self.manager.incidents:
@@ -525,30 +526,52 @@ class SOCDashboard:
             "Select report format: "
         ).strip()
 
+        if choice == "4":
+            print("Export cancelled.")
+            return
+
+        if choice not in ("1", "2", "3"):
+            print("Invalid report format.")
+            return
+
+        # Collect evidence once so JSON and PDF
+        # use the same snapshot.
+        evidence = EvidenceCorrelator.find_evidence(
+            selected,
+            self.manager
+        )
+
+        print("\n===== EVIDENCE SUMMARY =====")
+        print(
+            "Exact matches:",
+            len(evidence["exact_matches"])
+        )
+        print(
+            "Approximate legacy matches:",
+            len(evidence["legacy_matches"])
+        )
+        print(
+            "Missing tracked events:",
+            evidence["missing_tracked_events"]
+        )
+
         if choice in ("1", "3"):
             json_path = (
                 ReportGenerator.export_incident(
-                    selected
+                    selected,
+                    evidence=evidence
                 )
             )
-
             print(f"JSON report: {json_path}")
 
         if choice in ("2", "3"):
             pdf_path = (
                 ReportGenerator.export_incident_pdf(
-                    selected
+                    selected,
+                    evidence=evidence
                 )
             )
-
             print(f"PDF report: {pdf_path}")
-
-        if choice == "4":
-            print("Export cancelled.")
-
-        elif choice not in ("1", "2", "3"):
-            print("Invalid report format.")
-
     def view_event_timeline(self):
         print("\n===== EVENT TIMELINE =====")
         print("1. View all login events")
