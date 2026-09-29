@@ -1,0 +1,22 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# VS Code local settings
+.vscode/
+
+# Generated security data and reports
+data/*.json
+reports/
+
+# Environment variables
+.env
+.env.*
