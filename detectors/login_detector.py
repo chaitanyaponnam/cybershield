@@ -20,6 +20,7 @@ class LoginDetector(ThreatDetector):
         failures = defaultdict(list)
         alerts = []
 
+        # Collect failed login timestamps by source IP
         for event in events:
             if event["status"] != "FAILED":
                 continue
@@ -31,27 +32,40 @@ class LoginDetector(ThreatDetector):
 
             failures[ip].append(timestamp)
 
+        # Analyze each IP independently
         for ip, timestamps in failures.items():
             timestamps.sort()
 
             left = 0
 
             for right, current_time in enumerate(timestamps):
+
+                # Keep only failures within the time window
                 while current_time - timestamps[left] > self.window:
                     left += 1
 
                 count = right - left + 1
 
                 if count >= self.threshold:
-                    alerts.append(
-                        Alert(
-                            "Potential Brute Force",
-                            "HIGH",
-                            ip,
-                            f"{count} failed logins within "
-                            f"{self.window}"
+
+                    # Record the actual attack window
+                    attack_start = timestamps[left]
+                    attack_end = current_time
+
+                    alert = Alert(
+                        "Potential Brute Force",
+                        "HIGH",
+                        ip,
+                        (
+                            f"{count} failed logins between "
+                            f"{attack_start.isoformat()} and "
+                            f"{attack_end.isoformat()}"
                         )
                     )
+
+                    alerts.append(alert)
+
+                    # Generate one alert per IP per scan
                     break
 
         return alerts

@@ -144,6 +144,60 @@ class TestLoginDetector(unittest.TestCase):
             self.detector.detect(events),
             []
         )
+    
+    def test_alert_contains_attack_window(self):
+        events = [
+            self.create_event(
+                "10.0.0.99",
+                "FAILED",
+                minutes=i
+            )
+            for i in range(5)
+        ]
+
+        alerts = self.detector.detect(events)
+
+        self.assertEqual(len(alerts), 1)
+        self.assertIn(
+            "2026-09-29T10:00:00",
+            alerts[0].description
+        )
+        self.assertIn(
+            "2026-09-29T10:04:00",
+            alerts[0].description
+        )
+
+    def test_separate_attacks_have_distinct_descriptions(self):
+        first_attack = [
+            self.create_event(
+                "10.0.0.99",
+                "FAILED",
+                minutes=i
+            )
+            for i in range(5)
+        ]
+
+        second_attack = [
+            self.create_event(
+                "10.0.0.99",
+                "FAILED",
+                minutes=60 + i
+            )
+            for i in range(5)
+        ]
+
+        first_alert = self.detector.detect(
+            first_attack
+        )[0]
+
+        second_alert = self.detector.detect(
+            second_attack
+        )[0]
+
+        self.assertNotEqual(
+            first_alert.description,
+            second_alert.description
+        )
 
 
 if __name__ == "__main__":

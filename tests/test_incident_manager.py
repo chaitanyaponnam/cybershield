@@ -134,6 +134,58 @@ class TestIncidentManager(unittest.TestCase):
             len(restored.notes),
             1
         )
+    
+    def test_separate_attack_windows(self):
+        from detectors.login_detector import LoginDetector
+
+        detector = LoginDetector(
+            threshold=5,
+            window_minutes=5
+        )
+
+        def create_attack(start_hour):
+            return [
+                {
+                    "ip": "10.0.0.99",
+                    "status": "FAILED",
+                    "timestamp": (
+                        f"2026-09-29T{start_hour:02d}:"
+                        f"{minute:02d}:00"
+                    )
+                }
+                for minute in range(5)
+            ]
+
+        first_alert = detector.detect(
+            create_attack(10)
+        )[0]
+
+        second_alert = detector.detect(
+            create_attack(11)
+        )[0]
+
+        manager = IncidentManager()
+
+        manager.correlate([first_alert])
+        manager.correlate([second_alert])
+
+        incident = manager.incidents[
+            "IP:10.0.0.99"
+        ]
+
+        self.assertEqual(
+            len(incident.alerts),
+            2
+        )
+
+        # Reprocessing the same attack must not
+        # create another alert.
+        manager.correlate([first_alert])
+
+        self.assertEqual(
+            len(incident.alerts),
+            2
+        )
 
 
 if __name__ == "__main__":
