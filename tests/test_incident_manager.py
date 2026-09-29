@@ -273,6 +273,178 @@ class TestIncidentManager(unittest.TestCase):
             len(restored.alerts),
             1
         )
+    
+    def test_ongoing_attack_keeps_incident_id(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        extended = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "21 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:20:00"
+            )
+        )
+
+        self.manager.correlate([first])
+
+        original = list(
+            self.manager.incidents.values()
+        )[0]
+
+        original_id = original.incident_id
+        original_key = original.correlation_key
+
+        original.update_status("INVESTIGATING")
+        original.add_note(
+            "Chaitanya",
+            "Investigating ongoing attack."
+        )
+
+        self.manager.correlate([extended])
+
+        self.assertEqual(
+            len(self.manager.incidents),
+            1
+        )
+
+        updated = list(
+            self.manager.incidents.values()
+        )[0]
+
+        self.assertEqual(
+            updated.incident_id,
+            original_id
+        )
+
+        self.assertEqual(
+            updated.correlation_key,
+            original_key
+        )
+
+        self.assertEqual(
+            updated.status,
+            "INVESTIGATING"
+        )
+
+        self.assertEqual(
+            len(updated.notes),
+            1
+        )
+
+        self.assertEqual(
+            len(updated.alerts),
+            1
+        )
+
+        self.assertIn(
+            "10:20:00",
+            updated.alerts[0].description
+        )
+
+    def test_new_attack_creates_new_incident(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T11:00:00 and "
+                "2026-09-29T11:04:00"
+            )
+        )
+
+        self.manager.correlate([
+            first,
+            second
+        ])
+
+        self.assertEqual(
+            len(self.manager.incidents),
+            2
+        )
+
+    def test_extended_attack_survives_restart(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        extended = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "10 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:09:00"
+            )
+        )
+
+        self.manager.correlate([first])
+        self.manager.correlate([extended])
+
+        original = list(
+            self.manager.incidents.values()
+        )[0]
+
+        original_id = original.incident_id
+
+        self.manager.save_incidents()
+
+        reloaded = IncidentManager()
+
+        self.assertEqual(
+            len(reloaded.incidents),
+            1
+        )
+
+        restored = list(
+            reloaded.incidents.values()
+        )[0]
+
+        self.assertEqual(
+            restored.incident_id,
+            original_id
+        )
+
+        self.assertEqual(
+            len(restored.alerts),
+            1
+        )
+
+        self.assertIn(
+            "10:09:00",
+            restored.alerts[0].description
+        )
 
 
 if __name__ == "__main__":
