@@ -1,6 +1,7 @@
 
 import random
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 
 class LogGenerator:
@@ -13,6 +14,7 @@ class LogGenerator:
         # Simulated normal login activity
         for i in range(20):
             events.append({
+                "event_id": str(uuid4()),
                 "ip": f"192.168.1.{random.randint(20, 50)}",
                 "username": f"user{i}",
                 "status": random.choice(
@@ -26,6 +28,7 @@ class LogGenerator:
         # Simulated brute-force activity
         for i in range(8):
             events.append({
+                "event_id": str(uuid4()),
                 "ip": "10.0.0.99",
                 "username": "admin",
                 "status": "FAILED",

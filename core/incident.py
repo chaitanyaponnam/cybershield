@@ -25,18 +25,27 @@ class Incident:
     def add_alert(self, alert):
         self.alerts.append(alert)
 
-        current = self.SEVERITY_LEVELS[self.severity]
-        incoming = self.SEVERITY_LEVELS[alert.severity]
+        current = self.SEVERITY_LEVELS[
+            self.severity
+        ]
+
+        incoming = self.SEVERITY_LEVELS[
+            alert.severity
+        ]
 
         if incoming > current:
             self.severity = alert.severity
 
     def display(self):
-        print(f"\nIncident ID: {self.incident_id}")
+        print(
+            f"\nIncident ID: {self.incident_id}"
+        )
         print(f"Title: {self.title}")
         print(f"Severity: {self.severity}")
         print(f"Status: {self.status}")
-        print(f"Related Alerts: {len(self.alerts)}")
+        print(
+            f"Related Alerts: {len(self.alerts)}"
+        )
 
     def to_dict(self):
         return {
@@ -52,7 +61,7 @@ class Incident:
                 for alert in self.alerts
             ]
         }
-    
+
     def update_status(self, new_status):
         valid_statuses = {
             "OPEN",
@@ -62,13 +71,21 @@ class Incident:
 
         if new_status not in valid_statuses:
             raise ValueError(
-                f"Invalid incident status: {new_status}"
+                f"Invalid incident status: "
+                f"{new_status}"
             )
 
         self.status = new_status
 
     @classmethod
     def from_dict(cls, data):
+        """
+        Restore an incident and its alerts
+        from saved JSON.
+
+        Older alerts without event_ids
+        remain compatible.
+        """
         from core.alert import Alert
 
         incident = cls(
@@ -80,7 +97,10 @@ class Incident:
         incident.severity = data["severity"]
         incident.status = data["status"]
         incident.created_at = data["created_at"]
-        incident.notes = data.get("notes", [])
+        incident.notes = data.get(
+            "notes",
+            []
+        )
 
         for alert_data in data["alerts"]:
             alert = Alert(
@@ -88,16 +108,29 @@ class Incident:
                 alert_data["severity"],
                 alert_data["source_ip"],
                 alert_data["description"],
-                alert_data.get("affected_file")
+                affected_file=alert_data.get(
+                    "affected_file"
+                ),
+                event_ids=alert_data.get(
+                    "event_ids",
+                    []
+                )
             )
 
-            alert.alert_id = alert_data["alert_id"]
-            alert.timestamp = alert_data["timestamp"]
+            alert.alert_id = (
+                alert_data["alert_id"]
+            )
 
-            incident.alerts.append(alert)
+            alert.timestamp = (
+                alert_data["timestamp"]
+            )
+
+            incident.alerts.append(
+                alert
+            )
 
         return incident
-    
+
     def add_note(self, analyst, message):
         if not analyst.strip() or not message.strip():
             raise ValueError(
@@ -111,4 +144,5 @@ class Incident:
         }
 
         self.notes.append(note)
+
         return note

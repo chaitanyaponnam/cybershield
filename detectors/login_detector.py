@@ -1,4 +1,6 @@
 
+import hashlib
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -17,14 +19,45 @@ class LoginDetector(ThreatDetector):
         super().__init__("Brute Force Detector")
 
         if threshold < 1:
-            raise ValueError("Threshold must be at least 1")
+            raise ValueError(
+                "Threshold must be at least 1"
+            )
 
         if window_minutes <= 0 or quiet_minutes <= 0:
-            raise ValueError("Time periods must be positive")
+            raise ValueError(
+                "Time periods must be positive"
+            )
 
         self.threshold = threshold
-        self.window = timedelta(minutes=window_minutes)
-        self.quiet_period = timedelta(minutes=quiet_minutes)
+        self.window = timedelta(
+            minutes=window_minutes
+        )
+        self.quiet_period = timedelta(
+            minutes=quiet_minutes
+        )
+
+    @staticmethod
+    def get_event_id(event):
+        """
+        Prefer an existing event ID supplied
+        by the log source.
+
+        Otherwise, derive a deterministic ID
+        from the event's available fields.
+        """
+        if event.get("event_id") is not None:
+            return str(event["event_id"])
+
+        canonical_event = json.dumps(
+            event,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str
+        )
+
+        return hashlib.sha256(
+            canonical_event.encode("utf-8")
+        ).hexdigest()
 
     def detect(self, events):
         if not self._enabled:
@@ -41,37 +74,95 @@ class LoginDetector(ThreatDetector):
                 event["timestamp"]
             )
 
-            failures[event["ip"]].append(timestamp)
+            event_id = self.get_event_id(
+                event
+            )
 
-        for ip, timestamps in failures.items():
-            timestamps.sort()
+            failures[event["ip"]].append(
+                (timestamp, event_id)
+            )
 
-            # Divide the timeline into separate
-            # periods of activity.
+        for ip, entries in failures.items():
+            # Sort by time, then by ID for
+            # consistent processing.
+            entries.sort(
+                key=lambda item: (
+                    item[0],
+                    item[1]
+                )
+            )
+
+            # Remove duplicate events within
+            # the same scan.
+            unique_entries = []
+            seen_ids = set()
+
+            for timestamp, event_id in entries:
+                if event_id in seen_ids:
+                    continue
+
+                seen_ids.add(event_id)
+
+                unique_entries.append(
+                    (timestamp, event_id)
+                )
+
+            # Separate periods of activity
+            # using the quiet period.
             groups = []
             current_group = []
 
-            for timestamp in timestamps:
+            for entry in unique_entries:
+                timestamp = entry[0]
+
                 if current_group:
-                    gap = timestamp - current_group[-1]
+                    previous_time = (
+                        current_group[-1][0]
+                    )
+
+                    gap = (
+                        timestamp - previous_time
+                    )
 
                     if gap > self.quiet_period:
-                        groups.append(current_group)
+                        groups.append(
+                            current_group
+                        )
+
                         current_group = []
 
-                current_group.append(timestamp)
+                current_group.append(
+                    entry
+                )
 
             if current_group:
-                groups.append(current_group)
+                groups.append(
+                    current_group
+                )
 
-            # Each activity group can produce
-            # at most one brute-force alert.
             for group in groups:
-                if not self.is_brute_force(group):
+                timestamps = [
+                    timestamp
+                    for timestamp, event_id in group
+                ]
+
+                if not self.is_brute_force(
+                    timestamps
+                ):
                     continue
 
-                attack_start = group[0]
-                attack_end = group[-1]
+                attack_start = (
+                    group[0][0]
+                )
+
+                attack_end = (
+                    group[-1][0]
+                )
+
+                event_ids = [
+                    event_id
+                    for timestamp, event_id in group
+                ]
 
                 alerts.append(
                     Alert(
@@ -79,10 +170,13 @@ class LoginDetector(ThreatDetector):
                         "HIGH",
                         ip,
                         (
-                            f"{len(group)} failed logins between "
-                            f"{attack_start.isoformat()} and "
+                            f"{len(event_ids)} "
+                            f"failed logins between "
+                            f"{attack_start.isoformat()} "
+                            f"and "
                             f"{attack_end.isoformat()}"
-                        )
+                        ),
+                        event_ids=event_ids
                     )
                 )
 
@@ -90,19 +184,24 @@ class LoginDetector(ThreatDetector):
 
     def is_brute_force(self, timestamps):
         """
-        Check whether the activity group contains
-        enough failed logins within the detection window.
+        Check whether a group contains
+        enough failures within the
+        detection window.
         """
         left = 0
 
-        for right, current_time in enumerate(timestamps):
+        for right, current_time in enumerate(
+            timestamps
+        ):
             while (
                 current_time - timestamps[left]
                 > self.window
             ):
                 left += 1
 
-            count = right - left + 1
+            count = (
+                right - left + 1
+            )
 
             if count >= self.threshold:
                 return True

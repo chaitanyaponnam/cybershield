@@ -602,6 +602,169 @@ class TestIncidentManager(unittest.TestCase):
             "10:09:00",
             restored.alerts[0].description
         )
+    
+    def test_overlapping_scans_count_unique_events(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            ),
+            event_ids=["A", "B", "C", "D", "E"]
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:02:00 and "
+                "2026-09-29T10:06:00"
+            ),
+            event_ids=["C", "D", "E", "F", "G"]
+        )
+
+        self.manager.correlate([first])
+        self.manager.correlate([second])
+
+        self.assertEqual(len(self.manager.incidents), 1)
+
+        incident = list(self.manager.incidents.values())[0]
+        self.assertEqual(len(incident.alerts), 1)
+        self.assertEqual(
+            len(incident.alerts[0].event_ids),
+            7
+        )
+        self.assertIn(
+            "7 failed logins",
+            incident.alerts[0].description
+        )
+
+    def test_same_window_with_new_events(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            ),
+            event_ids=["A", "B", "C", "D", "E"]
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            ),
+            event_ids=["C", "D", "E", "F", "G"]
+        )
+
+        self.manager.correlate([first, second])
+
+        incident = list(self.manager.incidents.values())[0]
+
+        self.assertEqual(len(self.manager.incidents), 1)
+        self.assertEqual(len(incident.alerts), 1)
+        self.assertEqual(len(incident.alerts[0].event_ids), 7)
+
+    def test_unique_event_count_survives_restart(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            ),
+            event_ids=["A", "B", "C", "D", "E"]
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:05:00 and "
+                "2026-09-29T10:09:00"
+            ),
+            event_ids=["F", "G", "H", "I", "J"]
+        )
+
+        self.manager.correlate([first])
+
+        incident = list(self.manager.incidents.values())[0]
+        original_id = incident.incident_id
+
+        incident.update_status("INVESTIGATING")
+        incident.add_note(
+            "Chaitanya",
+            "Reviewing unique login events."
+        )
+
+        self.manager.save_incidents()
+
+        reloaded = IncidentManager()
+        reloaded.correlate([second])
+
+        restored = list(reloaded.incidents.values())[0]
+
+        self.assertEqual(restored.incident_id, original_id)
+        self.assertEqual(restored.status, "INVESTIGATING")
+        self.assertEqual(len(restored.notes), 1)
+        self.assertEqual(len(restored.alerts[0].event_ids), 10)
+        self.assertIn(
+            "10 failed logins",
+            restored.alerts[0].description
+        )
+
+    def test_legacy_alert_does_not_claim_exact_count(self):
+        legacy = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        tracked = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:05:00 and "
+                "2026-09-29T10:09:00"
+            ),
+            event_ids=["F", "G", "H", "I", "J"]
+        )
+
+        self.manager.correlate([legacy, tracked])
+
+        incident = list(self.manager.incidents.values())[0]
+
+        self.assertEqual(len(self.manager.incidents), 1)
+        self.assertEqual(incident.alerts[0].event_ids, [])
+        self.assertEqual(
+            self.manager.get_failure_count(
+                incident.alerts[0]
+            ),
+            5
+        )
 
 
 if __name__ == "__main__":
