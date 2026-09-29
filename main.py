@@ -5,6 +5,7 @@ from core.security_engine import SecurityEngine
 from core.incident_manager import IncidentManager
 from services.file_manager import FileManager
 from services.report_generator import ReportGenerator
+from services.log_history import LogHistory
 
 
 class SOCDashboard:
@@ -18,17 +19,11 @@ class SOCDashboard:
 
     @staticmethod
     def get_incident_statistics(incidents):
-        """
-        Calculate dashboard statistics from
-        saved incidents without modifying them.
-        """
         severity_counts = {
             level: 0
             for level in (
-                "LOW",
-                "MEDIUM",
-                "HIGH",
-                "CRITICAL"
+                "LOW", "MEDIUM",
+                "HIGH", "CRITICAL"
             )
         }
 
@@ -55,19 +50,22 @@ class SOCDashboard:
             has_brute_force_alert = False
 
             for alert in incident.alerts:
-                if alert.threat_type != "Potential Brute Force":
+                if (
+                    alert.threat_type
+                    != "Potential Brute Force"
+                ):
                     continue
 
                 has_brute_force_alert = True
 
                 event_ids = getattr(
-                    alert,
-                    "event_ids",
-                    []
+                    alert, "event_ids", []
                 )
 
                 if event_ids:
-                    tracked_event_ids.update(event_ids)
+                    tracked_event_ids.update(
+                        event_ids
+                    )
                 else:
                     legacy_login_alerts += 1
 
@@ -78,11 +76,15 @@ class SOCDashboard:
             "total_incidents": len(incidents),
             "severity": severity_counts,
             "status": status_counts,
-            "brute_force_incidents": brute_force_incidents,
+            "brute_force_incidents": (
+                brute_force_incidents
+            ),
             "unique_tracked_login_events": len(
                 tracked_event_ids
             ),
-            "legacy_login_alerts": legacy_login_alerts
+            "legacy_login_alerts": (
+                legacy_login_alerts
+            )
         }
 
     def display_menu(self):
@@ -99,22 +101,64 @@ class SOCDashboard:
         print("8. Exit")
         print("=" * 45)
 
+    def scan_menu(self):
+        print("\n===== SECURITY SCAN =====")
+        print("1. Scan existing saved logs")
+        print("2. Generate new logs and scan")
+        print("3. Cancel")
+
+        choice = input(
+            "Select an option: "
+        ).strip()
+
+        if choice == "1":
+            self.run_scan()
+
+        elif choice == "2":
+            result = (
+                LogHistory.generate_and_save()
+            )
+
+            print(
+                "\nGenerated events:",
+                result["generated"]
+            )
+            print(
+                "New events saved:",
+                result["added"]
+            )
+            print(
+                "Total saved login events:",
+                result["total"]
+            )
+
+            self.run_scan()
+
+        elif choice == "3":
+            print("Scan cancelled.")
+
+        else:
+            print("Invalid choice.")
+
     def run_scan(self):
-        previous_incident_ids = {
+        previous_ids = {
             incident.incident_id
             for incident in self.get_incidents()
         }
 
         alerts = self.engine.run_scan()
 
-        incidents = self.manager.correlate(alerts)
+        incidents = self.manager.correlate(
+            alerts
+        )
+
         self.manager.save_incidents()
 
         new_incidents = [
             incident
             for incident in incidents
             if incident.incident_id
-            not in previous_incident_ids
+            not in previous_ids
         ]
 
         threat_counts = Counter(
@@ -124,30 +168,41 @@ class SOCDashboard:
 
         print("\n===== SCAN SUMMARY =====")
         print("Scan completed!")
-        print(f"Detected alerts: {len(alerts)}")
-        print(f"New incidents: {len(new_incidents)}")
         print(
-            f"Total tracked incidents: "
-            f"{len(incidents)}"
+            f"Detected alerts: {len(alerts)}"
+        )
+        print(
+            f"New incidents: "
+            f"{len(new_incidents)}"
+        )
+        print(
+            "Total tracked incidents:",
+            len(incidents)
         )
 
         print("\nDetected threat types:")
 
         if not threat_counts:
             print("No threats detected.")
-        else:
-            for threat_type, count in sorted(
-                threat_counts.items()
-            ):
-                print(f"  {threat_type}: {count}")
 
-        statistics = self.get_incident_statistics(
-            incidents
+        for threat_type, count in sorted(
+            threat_counts.items()
+        ):
+            print(
+                f"  {threat_type}: {count}"
+            )
+
+        statistics = (
+            self.get_incident_statistics(
+                incidents
+            )
         )
 
         print(
-            "\nUnique tracked failed-login events: "
-            f"{statistics['unique_tracked_login_events']}"
+            "\nUnique tracked failed-login events:",
+            statistics[
+                "unique_tracked_login_events"
+            ]
         )
 
     def view_incidents(self):
@@ -157,7 +212,9 @@ class SOCDashboard:
             print("\nNo incidents found.")
             return
 
-        print("\n===== SECURITY INCIDENTS =====")
+        print(
+            "\n===== SECURITY INCIDENTS ====="
+        )
 
         for incident in incidents:
             incident.display()
@@ -169,53 +226,65 @@ class SOCDashboard:
                 == "Potential Brute Force"
             ]
 
-            if login_alerts:
-                event_ids = {
-                    event_id
-                    for alert in login_alerts
-                    for event_id in getattr(
-                        alert,
-                        "event_ids",
-                        []
-                    )
-                }
+            if not login_alerts:
+                continue
 
-                print(
-                    "Unique tracked login events: "
-                    f"{len(event_ids)}"
+            event_ids = {
+                event_id
+                for alert in login_alerts
+                for event_id in getattr(
+                    alert, "event_ids", []
                 )
+            }
 
-                if any(
-                    not getattr(alert, "event_ids", [])
-                    for alert in login_alerts
-                ):
-                    print(
-                        "Note: Legacy login evidence "
-                        "has no event IDs."
-                    )
+            print(
+                "Unique tracked login events:",
+                len(event_ids)
+            )
+
+            if any(
+                not getattr(
+                    alert, "event_ids", []
+                )
+                for alert in login_alerts
+            ):
+                print(
+                    "Note: Legacy login evidence "
+                    "has no event IDs."
+                )
 
     def find_incident(self, incident_id):
         return next(
             (
                 incident
-                for incident in self.get_incidents()
-                if incident.incident_id == incident_id
+                for incident
+                in self.get_incidents()
+                if incident.incident_id
+                == incident_id
             ),
             None
         )
 
     def show_attack_details(self, incident):
-        print("\n===== ATTACK EVIDENCE =====")
+        print(
+            "\n===== ATTACK EVIDENCE ====="
+        )
 
-        found_login_alert = False
+        found = False
 
         for alert in incident.alerts:
-            if alert.threat_type != "Potential Brute Force":
+            if (
+                alert.threat_type
+                != "Potential Brute Force"
+            ):
                 continue
 
-            found_login_alert = True
+            found = True
 
-            print(f"\nSource IP: {alert.source_ip}")
+            print(
+                f"\nSource IP: "
+                f"{alert.source_ip}"
+            )
 
             attack_window = (
                 self.manager.get_attack_window(
@@ -225,35 +294,37 @@ class SOCDashboard:
 
             if attack_window:
                 start, end = attack_window
+
                 print(
-                    f"Attack start: {start.isoformat()}"
+                    "Attack start:",
+                    start.isoformat()
                 )
                 print(
-                    f"Attack end:   {end.isoformat()}"
+                    "Attack end:",
+                    end.isoformat()
                 )
 
             event_ids = getattr(
-                alert,
-                "event_ids",
-                []
+                alert, "event_ids", []
             )
 
             if event_ids:
                 print(
-                    "Unique tracked events: "
-                    f"{len(set(event_ids))}"
+                    "Unique tracked events:",
+                    len(set(event_ids))
                 )
             else:
                 print(
-                    "Exact event count: unavailable "
-                    "(legacy evidence)"
+                    "Exact event count: "
+                    "unavailable (legacy evidence)"
                 )
 
             print(
-                f"Finding: {alert.description}"
+                f"Finding: "
+                f"{alert.description}"
             )
 
-        if not found_login_alert:
+        if not found:
             print(
                 "No brute-force evidence "
                 "in this incident."
@@ -277,28 +348,41 @@ class SOCDashboard:
             print("Incident not found!")
             return
 
-        print("\n===== INCIDENT DETAILS =====")
+        print(
+            "\n===== INCIDENT DETAILS ====="
+        )
         selected.display()
 
-        self.show_attack_details(selected)
+        self.show_attack_details(
+            selected
+        )
 
-        print("\n===== INVESTIGATION NOTES =====")
+        print(
+            "\n===== INVESTIGATION NOTES ====="
+        )
 
         if not selected.notes:
-            print("No investigation notes yet.")
+            print(
+                "No investigation notes yet."
+            )
 
         for note in selected.notes:
             print(
-                f"\nAnalyst: {note['analyst']}"
+                f"\nAnalyst: "
+                f"{note['analyst']}"
             )
             print(
-                f"Time: {note['timestamp']}"
+                f"Time: "
+                f"{note['timestamp']}"
             )
             print(
-                f"Note: {note['message']}"
+                f"Note: "
+                f"{note['message']}"
             )
 
-        print("\n===== RELATED ALERTS =====")
+        print(
+            "\n===== RELATED ALERTS ====="
+        )
 
         for alert in selected.alerts:
             alert.display()
@@ -330,7 +414,9 @@ class SOCDashboard:
             statuses[choice]
         )
 
-        print("Incident status updated.")
+        print(
+            "Incident status updated."
+        )
 
     def view_report(self):
         report = FileManager.load_data(
@@ -349,20 +435,25 @@ class SOCDashboard:
 
         print(
             "Scan time:",
-            report.get("scan_time", "Unknown")
+            report.get(
+                "scan_time", "Unknown"
+            )
         )
 
         print(
             "Total alerts:",
-            report.get("total_alerts", 0)
+            report.get(
+                "total_alerts", 0
+            )
         )
 
         threat_counts = Counter()
 
-        for alert in report.get("alerts", []):
+        for alert in report.get(
+            "alerts", []
+        ):
             severity = alert.get(
-                "severity",
-                "UNKNOWN"
+                "severity", "UNKNOWN"
             )
 
             threat_type = alert.get(
@@ -371,22 +462,29 @@ class SOCDashboard:
             )
 
             print(
-                f"[{severity}] {threat_type}"
+                f"[{severity}] "
+                f"{threat_type}"
             )
 
-            threat_counts[threat_type] += 1
+            threat_counts[
+                threat_type
+            ] += 1
 
-        print("\n===== THREAT SUMMARY =====")
+        print(
+            "\n===== THREAT SUMMARY ====="
+        )
 
         if not threat_counts:
-            print("No threats in the latest report.")
-        else:
-            for threat_type, count in sorted(
-                threat_counts.items()
-            ):
-                print(
-                    f"{threat_type}: {count}"
-                )
+            print(
+                "No threats in the latest report."
+            )
+
+        for threat_type, count in sorted(
+            threat_counts.items()
+        ):
+            print(
+                f"{threat_type}: {count}"
+            )
 
     def view_statistics(self):
         statistics = (
@@ -395,14 +493,18 @@ class SOCDashboard:
             )
         )
 
-        print("\n===== SOC STATISTICS =====")
+        print(
+            "\n===== SOC STATISTICS ====="
+        )
 
         print(
             "Total incidents:",
             statistics["total_incidents"]
         )
 
-        print("\n===== BY SEVERITY =====")
+        print(
+            "\n===== BY SEVERITY ====="
+        )
 
         for severity, count in (
             statistics["severity"].items()
@@ -411,7 +513,9 @@ class SOCDashboard:
                 f"{severity}: {count}"
             )
 
-        print("\n===== BY STATUS =====")
+        print(
+            "\n===== BY STATUS ====="
+        )
 
         for status, count in (
             statistics["status"].items()
@@ -420,11 +524,15 @@ class SOCDashboard:
                 f"{status}: {count}"
             )
 
-        print("\n===== LOGIN THREATS =====")
+        print(
+            "\n===== LOGIN THREATS ====="
+        )
 
         print(
             "Brute-force incidents:",
-            statistics["brute_force_incidents"]
+            statistics[
+                "brute_force_incidents"
+            ]
         )
 
         print(
@@ -434,15 +542,19 @@ class SOCDashboard:
             ]
         )
 
-        if statistics["legacy_login_alerts"]:
+        if statistics[
+            "legacy_login_alerts"
+        ]:
             print(
                 "Legacy login alerts without IDs:",
-                statistics["legacy_login_alerts"]
+                statistics[
+                    "legacy_login_alerts"
+                ]
             )
 
             print(
-                "Historical event totals may be "
-                "higher than the tracked count."
+                "Historical event totals may "
+                "be higher than the tracked count."
             )
 
     def add_investigation_note(self):
@@ -477,12 +589,13 @@ class SOCDashboard:
                 analyst,
                 message
             )
-
         except ValueError as error:
             print(error)
             return
 
-        print("Investigation note saved.")
+        print(
+            "Investigation note saved."
+        )
 
     def export_incident_report(self):
         self.view_incidents()
@@ -534,12 +647,12 @@ class SOCDashboard:
             )
 
         if choice == "4":
-            print("Export cancelled.")
+            print(
+                "Export cancelled."
+            )
 
         elif choice not in (
-            "1",
-            "2",
-            "3"
+            "1", "2", "3"
         ):
             print(
                 "Invalid report format."
@@ -554,7 +667,7 @@ class SOCDashboard:
             ).strip()
 
             if choice == "1":
-                self.run_scan()
+                self.scan_menu()
 
             elif choice == "2":
                 self.view_incidents()
