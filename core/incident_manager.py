@@ -1,6 +1,6 @@
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.incident import Incident
 from services.file_manager import FileManager
@@ -8,16 +8,30 @@ from services.file_manager import FileManager
 
 class IncidentManager:
 
-    def __init__(self):
+    def __init__(self, correlation_gap_minutes=10):
+        if correlation_gap_minutes < 0:
+            raise ValueError(
+                "Correlation gap cannot be negative"
+            )
+
+        self.correlation_gap = timedelta(
+            minutes=correlation_gap_minutes
+        )
+
         self.incidents = {}
         self.load_incidents()
 
     def load_incidents(self):
-        saved_data = FileManager.load_data("incidents.json")
+        saved_data = FileManager.load_data(
+            "incidents.json"
+        )
 
         for data in saved_data:
             incident = Incident.from_dict(data)
-            self.incidents[incident.correlation_key] = incident
+
+            self.incidents[
+                incident.correlation_key
+            ] = incident
 
     @staticmethod
     def alert_fingerprint(alert):
@@ -34,6 +48,13 @@ class IncidentManager:
 
     @staticmethod
     def get_attack_window(alert):
+        """
+        Extract start and end times from
+        brute-force alert descriptions.
+
+        Return None for legacy alerts and
+        other alert types.
+        """
         if alert.threat_type != "Potential Brute Force":
             return None
 
@@ -43,11 +64,21 @@ class IncidentManager:
             return None
 
         try:
-            window = alert.description.split(marker, 1)[1]
-            start_text, end_text = window.split(" and ", 1)
+            window = alert.description.split(
+                marker, 1
+            )[1]
 
-            start = datetime.fromisoformat(start_text)
-            end = datetime.fromisoformat(end_text)
+            start_text, end_text = window.split(
+                " and ", 1
+            )
+
+            start = datetime.fromisoformat(
+                start_text
+            )
+
+            end = datetime.fromisoformat(
+                end_text
+            )
 
             if end < start:
                 return None
@@ -57,20 +88,46 @@ class IncidentManager:
         except (ValueError, IndexError):
             return None
 
-    def get_correlation_details(self, alert):
+    @staticmethod
+    def get_failure_count(alert):
+        """
+        Read the reported failed-login count
+        from a brute-force alert.
+        """
+        try:
+            return int(
+                alert.description.split(
+                    " failed logins between ", 1
+                )[0]
+            )
 
+        except (ValueError, IndexError):
+            return 0
+
+    def get_correlation_details(self, alert):
+        """
+        Generate an incident key and title.
+
+        Existing keys remain unchanged when
+        an incident receives new evidence.
+        """
         if alert.affected_file:
-            key = f"FILE:{alert.affected_file}"
+            key = (
+                f"FILE:{alert.affected_file}"
+            )
+
             title = (
                 f"File Security Incident: "
                 f"{alert.affected_file}"
             )
 
         elif alert.source_ip != "LOCAL_FILE":
-            window = self.get_attack_window(alert)
+            attack_window = self.get_attack_window(
+                alert
+            )
 
-            if window:
-                start, end = window
+            if attack_window:
+                start, end = attack_window
 
                 key = (
                     f"IP:{alert.source_ip}:"
@@ -86,8 +143,9 @@ class IncidentManager:
                 )
 
             else:
-                # Maintain compatibility with older alerts.
+                # Legacy correlation format.
                 key = f"IP:{alert.source_ip}"
+
                 title = (
                     f"Suspicious Login Activity: "
                     f"{alert.source_ip}"
@@ -99,15 +157,34 @@ class IncidentManager:
 
         return key, title
 
+    def windows_are_nearby(
+        self,
+        first_start,
+        first_end,
+        second_start,
+        second_end
+    ):
+        """
+        Return True if two attack windows
+        overlap or have a gap no greater
+        than the configured correlation gap.
+        """
+        return (
+            first_start
+            <= second_end + self.correlation_gap
+            and second_start
+            <= first_end + self.correlation_gap
+        )
+
     def find_matching_attack(self, alert):
         """
-        Find an existing incident for the same IP
-        with an overlapping attack window.
-
-        Legacy alerts without a recorded window
-        are not merged automatically.
+        Find an existing brute-force incident
+        from the same IP with an overlapping
+        or nearby attack window.
         """
-        incoming = self.get_attack_window(alert)
+        incoming = self.get_attack_window(
+            alert
+        )
 
         if incoming is None:
             return None
@@ -116,65 +193,93 @@ class IncidentManager:
 
         for incident in self.incidents.values():
             for existing in incident.alerts:
-                if existing.source_ip != alert.source_ip:
+                if (
+                    existing.source_ip
+                    != alert.source_ip
+                ):
                     continue
 
-                existing_window = self.get_attack_window(
-                    existing
+                existing_window = (
+                    self.get_attack_window(
+                        existing
+                    )
                 )
 
                 if existing_window is None:
                     continue
 
-                existing_start, existing_end = existing_window
-
-                overlaps = (
-                    incoming_start <= existing_end
-                    and existing_start <= incoming_end
+                existing_start, existing_end = (
+                    existing_window
                 )
 
-                if overlaps:
+                if self.windows_are_nearby(
+                    incoming_start,
+                    incoming_end,
+                    existing_start,
+                    existing_end
+                ):
                     return incident
 
         return None
 
-    def update_attack_evidence(self, incident, alert):
+    def update_attack_evidence(
+        self,
+        incident,
+        alert
+    ):
         """
-        Keep the earliest start and latest end
-        observed for an ongoing attack.
+        Update an existing incident when
+        an attack continues.
 
-        Preserve the incident's ID, key, status
-        and investigation notes.
+        Preserve:
+        - Incident ID
+        - Correlation key
+        - Investigation status
+        - Investigation notes
         """
-        incoming = self.get_attack_window(alert)
+        incoming = self.get_attack_window(
+            alert
+        )
 
         if incoming is None:
             return
 
         incoming_start, incoming_end = incoming
 
-        for index, existing in enumerate(incident.alerts):
-            if existing.source_ip != alert.source_ip:
+        for index, existing in enumerate(
+            incident.alerts
+        ):
+            if (
+                existing.source_ip
+                != alert.source_ip
+            ):
                 continue
 
-            existing_window = self.get_attack_window(
-                existing
+            existing_window = (
+                self.get_attack_window(
+                    existing
+                )
             )
 
             if existing_window is None:
                 continue
 
-            existing_start, existing_end = existing_window
-
-            overlaps = (
-                incoming_start <= existing_end
-                and existing_start <= incoming_end
+            existing_start, existing_end = (
+                existing_window
             )
 
-            if not overlaps:
+            nearby = self.windows_are_nearby(
+                incoming_start,
+                incoming_end,
+                existing_start,
+                existing_end
+            )
+
+            if not nearby:
                 continue
 
-            # Ignore older or identical scan results.
+            # Ignore older evidence that is
+            # already covered by this incident.
             if (
                 incoming_start >= existing_start
                 and incoming_end <= existing_end
@@ -191,15 +296,20 @@ class IncidentManager:
                 incoming_end
             )
 
-            # Keep the newer evidence while ensuring
-            # its recorded window includes all activity.
-            old_count = self.get_failure_count(existing)
-            new_count = self.get_failure_count(alert)
+            old_count = self.get_failure_count(
+                existing
+            )
 
-            # If windows overlap, adding their counts
-            # would double-count shared events.
-            # Use the larger observed count instead.
-            count = max(old_count, new_count)
+            new_count = self.get_failure_count(
+                alert
+            )
+
+            # Avoid double-counting events
+            # from overlapping scan windows.
+            count = max(
+                old_count,
+                new_count
+            )
 
             alert.description = (
                 f"{count} failed logins between "
@@ -207,8 +317,11 @@ class IncidentManager:
                 f"{combined_end.isoformat()}"
             )
 
+            # Replace the older evidence.
             incident.alerts[index] = alert
 
+            # Update the displayed title without
+            # changing the saved correlation key.
             incident.title = (
                 f"Suspicious Login Activity: "
                 f"{alert.source_ip} "
@@ -218,21 +331,15 @@ class IncidentManager:
 
             return
 
-    @staticmethod
-    def get_failure_count(alert):
-        try:
-            return int(
-                alert.description.split(
-                    " failed logins between ", 1
-                )[0]
-            )
-        except (ValueError, IndexError):
-            return 0
-
     def correlate(self, alerts):
-
+        """
+        Group alerts into incidents and
+        prevent duplicate findings.
+        """
         for alert in alerts:
-            fingerprint = self.alert_fingerprint(alert)
+            fingerprint = self.alert_fingerprint(
+                alert
+            )
 
             already_processed = any(
                 self.alert_fingerprint(existing)
@@ -244,7 +351,9 @@ class IncidentManager:
             if already_processed:
                 continue
 
-            matching = self.find_matching_attack(alert)
+            matching = self.find_matching_attack(
+                alert
+            )
 
             if matching is not None:
                 self.update_attack_evidence(
@@ -253,8 +362,10 @@ class IncidentManager:
                 )
                 continue
 
-            key, title = self.get_correlation_details(
-                alert
+            key, title = (
+                self.get_correlation_details(
+                    alert
+                )
             )
 
             if key not in self.incidents:
@@ -263,16 +374,27 @@ class IncidentManager:
                     key
                 )
 
-            self.incidents[key].add_alert(alert)
+            self.incidents[key].add_alert(
+                alert
+            )
 
-        return list(self.incidents.values())
+        return list(
+            self.incidents.values()
+        )
 
-    def update_incident(self, incident_id, status):
-
+    def update_incident(
+        self,
+        incident_id,
+        status
+    ):
         for incident in self.incidents.values():
             if incident.incident_id == incident_id:
-                incident.update_status(status)
+                incident.update_status(
+                    status
+                )
+
                 self.save_incidents()
+
                 return True
 
         return False
@@ -289,7 +411,9 @@ class IncidentManager:
                     analyst,
                     message
                 )
+
                 self.save_incidents()
+
                 return True
 
         return False

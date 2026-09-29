@@ -445,6 +445,163 @@ class TestIncidentManager(unittest.TestCase):
             "10:09:00",
             restored.alerts[0].description
         )
+    
+    def test_adjacent_attack_windows_merge(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:05:00 and "
+                "2026-09-29T10:09:00"
+            )
+        )
+
+        self.manager.correlate([first])
+
+        original = list(
+            self.manager.incidents.values()
+        )[0]
+
+        original_id = original.incident_id
+
+        self.manager.correlate([second])
+
+        self.assertEqual(
+            len(self.manager.incidents),
+            1
+        )
+
+        updated = list(
+            self.manager.incidents.values()
+        )[0]
+
+        self.assertEqual(
+            updated.incident_id,
+            original_id
+        )
+
+        self.assertIn(
+            "2026-09-29T10:09:00",
+            updated.alerts[0].description
+        )
+
+    def test_attack_beyond_correlation_gap(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:30:00 and "
+                "2026-09-29T10:34:00"
+            )
+        )
+
+        self.manager.correlate([
+            first,
+            second
+        ])
+
+        self.assertEqual(
+            len(self.manager.incidents),
+            2
+        )
+
+    def test_adjacent_attack_preserves_investigation(self):
+        first = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:00:00 and "
+                "2026-09-29T10:04:00"
+            )
+        )
+
+        second = Alert(
+            "Potential Brute Force",
+            "HIGH",
+            "10.0.0.99",
+            (
+                "5 failed logins between "
+                "2026-09-29T10:05:00 and "
+                "2026-09-29T10:09:00"
+            )
+        )
+
+        self.manager.correlate([first])
+
+        incident = list(
+            self.manager.incidents.values()
+        )[0]
+
+        incident.update_status("INVESTIGATING")
+
+        incident.add_note(
+            "Chaitanya",
+            "Investigating suspicious login activity."
+        )
+
+        original_id = incident.incident_id
+
+        self.manager.correlate([second])
+        self.manager.save_incidents()
+
+        reloaded = IncidentManager()
+
+        self.assertEqual(
+            len(reloaded.incidents),
+            1
+        )
+
+        restored = list(
+            reloaded.incidents.values()
+        )[0]
+
+        self.assertEqual(
+            restored.incident_id,
+            original_id
+        )
+
+        self.assertEqual(
+            restored.status,
+            "INVESTIGATING"
+        )
+
+        self.assertEqual(
+            len(restored.notes),
+            1
+        )
+
+        self.assertIn(
+            "10:09:00",
+            restored.alerts[0].description
+        )
 
 
 if __name__ == "__main__":
