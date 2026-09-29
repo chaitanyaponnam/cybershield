@@ -284,6 +284,87 @@ class TestLoginDetector(unittest.TestCase):
             detected_ips.count("10.0.0.20"),
             2
         )
+    
+    def test_sustained_attack_produces_one_alert(self):
+        # 21 failures across 20 minutes.
+        events = [
+            self.create_event(
+                "10.0.0.99",
+                "FAILED",
+                minutes=i
+            )
+            for i in range(21)
+        ]
+
+        alerts = self.detector.detect(events)
+
+        self.assertEqual(len(alerts), 1)
+
+        self.assertIn(
+            "21 failed logins",
+            alerts[0].description
+        )
+
+        self.assertIn(
+            "2026-09-29T10:20:00",
+            alerts[0].description
+        )
+
+    def test_new_attack_after_quiet_period(self):
+        events = []
+
+        for start in [0, 60]:
+            events.extend([
+                self.create_event(
+                    "10.0.0.99",
+                    "FAILED",
+                    minutes=start + i
+                )
+                for i in range(5)
+            ])
+
+        alerts = self.detector.detect(events)
+
+        self.assertEqual(len(alerts), 2)
+
+    def test_sparse_activity_does_not_trigger_alert(self):
+        # Activity continues, but never reaches
+        # five failures within five minutes.
+        events = [
+            self.create_event(
+                "10.0.0.99",
+                "FAILED",
+                minutes=i * 6
+            )
+            for i in range(10)
+        ]
+
+        alerts = self.detector.detect(events)
+
+        self.assertEqual(alerts, [])
+
+    def test_custom_quiet_period(self):
+        detector = LoginDetector(
+            threshold=5,
+            window_minutes=5,
+            quiet_minutes=2
+        )
+
+        events = []
+
+        for start in [0, 10]:
+            events.extend([
+                self.create_event(
+                    "10.0.0.99",
+                    "FAILED",
+                    minutes=start + i
+                )
+                for i in range(5)
+            ])
+
+        alerts = detector.detect(events)
+
+        self.assertEqual(len(alerts), 2)
 
 
 if __name__ == "__main__":
