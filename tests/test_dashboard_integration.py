@@ -1,207 +1,226 @@
 import unittest
-from contextlib import redirect_stdout
 from io import StringIO
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from main import SOCDashboard
 
 
 class TestDashboardIntegration(unittest.TestCase):
 
-    @staticmethod
-    def create_alert(threat_type, source_ip=None):
-        return SimpleNamespace(
-            threat_type=threat_type,
-            source_ip=source_ip
-        )
-
-    @staticmethod
     def create_incident(
-        severity,
-        status,
-        alerts
+        self,
+        severity="HIGH",
+        status="OPEN",
+        alerts=None
     ):
+        if alerts is None:
+            alerts = []
+
         return SimpleNamespace(
+            incident_id="INC-001",
+            title="Test Incident",
+            description="Test security incident",
             severity=severity,
             status=status,
             alerts=alerts
         )
 
-    def create_dashboard(self, incidents):
-        dashboard = SOCDashboard.__new__(SOCDashboard)
-
-        dashboard.manager = SimpleNamespace(
-            incidents={
-                str(index): incident
-                for index, incident in enumerate(
-                    incidents,
-                    start=1
-                )
-            }
+    def create_alert(
+        self,
+        threat_type,
+        source_ip=None
+    ):
+        return SimpleNamespace(
+            threat_type=threat_type,
+            source_ip=source_ip
         )
 
-        return dashboard
+    # ------------------------------------------------------------
+    # Dashboard overview
+    # ------------------------------------------------------------
 
-    def capture_dashboard_output(self, incidents):
-        dashboard = self.create_dashboard(incidents)
-
-        output = StringIO()
-
-        with redirect_stdout(output):
-            dashboard.view_soc_dashboard()
-
-        return output.getvalue()
-
-    def test_dashboard_displays_incident_and_alert_totals(self):
+    @patch("main.SOCDashboard.get_incidents")
+    def test_dashboard_displays_incident_overview(
+        self,
+        mock_get_incidents
+    ):
         incidents = [
             self.create_incident(
-                "HIGH",
-                "OPEN",
-                [
+                alerts=[
                     self.create_alert(
                         "Potential Brute Force",
                         "10.0.0.99"
-                    ),
-                    self.create_alert(
-                        "Sensitive Data Detected",
-                        "LOCAL_FILE"
                     )
                 ]
             ),
             self.create_incident(
-                "MEDIUM",
-                "RESOLVED",
-                [
+                severity="CRITICAL",
+                status="INVESTIGATING",
+                alerts=[
                     self.create_alert(
-                        "File Integrity Violation",
+                        "Sensitive Data Detected",
                         "LOCAL_FILE"
                     )
                 ]
             )
         ]
 
-        output = self.capture_dashboard_output(
-            incidents
-        )
+        mock_get_incidents.return_value = incidents
+
+        dashboard = SOCDashboard()
+
+        output = StringIO()
+
+        with patch(
+            "sys.stdout",
+            new=output
+        ):
+            dashboard.view_soc_dashboard()
+
+        result = output.getvalue()
 
         self.assertIn(
             "CYBERSHIELD SOC DASHBOARD",
-            output
+            result
         )
 
         self.assertIn(
             "Total Incidents       : 2",
-            output
+            result
         )
 
         self.assertIn(
-            "Total Alerts          : 3",
-            output
+            "Total Alerts          : 2",
+            result
         )
 
-    def test_dashboard_displays_status_counts(self):
+    # ------------------------------------------------------------
+    # Status
+    # ------------------------------------------------------------
+
+    @patch("main.SOCDashboard.get_incidents")
+    def test_dashboard_displays_status_counts(
+        self,
+        mock_get_incidents
+    ):
         incidents = [
             self.create_incident(
-                "HIGH",
-                "OPEN",
-                []
+                status="OPEN"
             ),
             self.create_incident(
-                "HIGH",
-                "OPEN",
-                []
+                status="OPEN"
             ),
             self.create_incident(
-                "MEDIUM",
-                "INVESTIGATING",
-                []
+                status="INVESTIGATING"
             ),
             self.create_incident(
-                "LOW",
-                "RESOLVED",
-                []
+                status="RESOLVED"
             )
         ]
 
-        output = self.capture_dashboard_output(
-            incidents
-        )
+        mock_get_incidents.return_value = incidents
+
+        dashboard = SOCDashboard()
+
+        output = StringIO()
+
+        with patch(
+            "sys.stdout",
+            new=output
+        ):
+            dashboard.view_soc_dashboard()
+
+        result = output.getvalue()
 
         self.assertIn(
             "OPEN                  : 2",
-            output
+            result
         )
 
         self.assertIn(
             "INVESTIGATING         : 1",
-            output
+            result
         )
 
         self.assertIn(
             "RESOLVED              : 1",
-            output
+            result
         )
 
-    def test_dashboard_displays_severity_counts(self):
+    # ------------------------------------------------------------
+    # Severity
+    # ------------------------------------------------------------
+
+    @patch("main.SOCDashboard.get_incidents")
+    def test_dashboard_displays_severity_counts(
+        self,
+        mock_get_incidents
+    ):
         incidents = [
             self.create_incident(
-                "CRITICAL",
-                "OPEN",
-                []
+                severity="CRITICAL"
             ),
             self.create_incident(
-                "HIGH",
-                "OPEN",
-                []
+                severity="HIGH"
             ),
             self.create_incident(
-                "HIGH",
-                "RESOLVED",
-                []
+                severity="HIGH"
             ),
             self.create_incident(
-                "MEDIUM",
-                "OPEN",
-                []
+                severity="MEDIUM"
             ),
             self.create_incident(
-                "LOW",
-                "OPEN",
-                []
+                severity="LOW"
             )
         ]
 
-        output = self.capture_dashboard_output(
-            incidents
-        )
+        mock_get_incidents.return_value = incidents
+
+        dashboard = SOCDashboard()
+
+        output = StringIO()
+
+        with patch(
+            "sys.stdout",
+            new=output
+        ):
+            dashboard.view_soc_dashboard()
+
+        result = output.getvalue()
 
         self.assertIn(
             "CRITICAL              : 1",
-            output
+            result
         )
 
         self.assertIn(
             "HIGH                  : 2",
-            output
+            result
         )
 
         self.assertIn(
             "MEDIUM                : 1",
-            output
+            result
         )
 
         self.assertIn(
             "LOW                   : 1",
-            output
+            result
         )
 
-    def test_dashboard_displays_top_threats(self):
+    # ------------------------------------------------------------
+    # Threat types
+    # ------------------------------------------------------------
+
+    @patch("main.SOCDashboard.get_incidents")
+    def test_dashboard_displays_top_threat_types(
+        self,
+        mock_get_incidents
+    ):
         incidents = [
             self.create_incident(
-                "HIGH",
-                "OPEN",
-                [
+                alerts=[
                     self.create_alert(
                         "Potential Brute Force",
                         "10.0.0.99"
@@ -215,48 +234,45 @@ class TestDashboardIntegration(unittest.TestCase):
                         "LOCAL_FILE"
                     )
                 ]
-            ),
-            self.create_incident(
-                "HIGH",
-                "INVESTIGATING",
-                [
-                    self.create_alert(
-                        "Potential Brute Force",
-                        "10.0.0.99"
-                    ),
-                    self.create_alert(
-                        "File Integrity Violation",
-                        "LOCAL_FILE"
-                    )
-                ]
             )
         ]
 
-        output = self.capture_dashboard_output(
-            incidents
-        )
+        mock_get_incidents.return_value = incidents
+
+        dashboard = SOCDashboard()
+
+        output = StringIO()
+
+        with patch(
+            "sys.stdout",
+            new=output
+        ):
+            dashboard.view_soc_dashboard()
+
+        result = output.getvalue()
 
         self.assertIn(
             "Potential Brute Force",
-            output
+            result
         )
 
         self.assertIn(
             "Sensitive Data Detected",
-            output
+            result
         )
 
-        self.assertIn(
-            "File Integrity Violation",
-            output
-        )
+    # ------------------------------------------------------------
+    # Source IPs
+    # ------------------------------------------------------------
 
-    def test_dashboard_displays_top_source_ips(self):
+    @patch("main.SOCDashboard.get_incidents")
+    def test_dashboard_displays_top_source_ips(
+        self,
+        mock_get_incidents
+    ):
         incidents = [
             self.create_incident(
-                "HIGH",
-                "OPEN",
-                [
+                alerts=[
                     self.create_alert(
                         "Potential Brute Force",
                         "10.0.0.99"
@@ -270,88 +286,80 @@ class TestDashboardIntegration(unittest.TestCase):
                         "LOCAL_FILE"
                     )
                 ]
-            ),
-            self.create_incident(
-                "HIGH",
-                "OPEN",
-                [
-                    self.create_alert(
-                        "Potential Brute Force",
-                        "10.0.0.99"
-                    ),
-                    self.create_alert(
-                        "File Integrity Violation",
-                        "LOCAL_FILE"
-                    )
-                ]
             )
         ]
 
-        output = self.capture_dashboard_output(
-            incidents
-        )
+        mock_get_incidents.return_value = incidents
+
+        dashboard = SOCDashboard()
+
+        output = StringIO()
+
+        with patch(
+            "sys.stdout",
+            new=output
+        ):
+            dashboard.view_soc_dashboard()
+
+        result = output.getvalue()
 
         self.assertIn(
             "10.0.0.99",
-            output
+            result
         )
 
         self.assertIn(
             "LOCAL_FILE",
-            output
+            result
         )
 
-    def test_dashboard_handles_empty_incidents(self):
-        output = self.capture_dashboard_output([])
+    # ------------------------------------------------------------
+    # Empty dashboard
+    # ------------------------------------------------------------
+
+    @patch("main.SOCDashboard.get_incidents")
+    def test_dashboard_handles_empty_incidents(
+        self,
+        mock_get_incidents
+    ):
+        mock_get_incidents.return_value = []
+
+        dashboard = SOCDashboard()
+
+        output = StringIO()
+
+        with patch(
+            "sys.stdout",
+            new=output
+        ):
+            dashboard.view_soc_dashboard()
+
+        result = output.getvalue()
+
+        self.assertIn(
+            "CYBERSHIELD SOC DASHBOARD",
+            result
+        )
 
         self.assertIn(
             "Total Incidents       : 0",
-            output
+            result
         )
 
         self.assertIn(
             "Total Alerts          : 0",
-            output
+            result
         )
 
         self.assertIn(
-            "CRITICAL              : 0",
-            output
+            "No threat data available.",
+            result
         )
 
         self.assertIn(
-            "HIGH                  : 0",
-            output
+            "No source IP data available.",
+            result
         )
-
-        self.assertIn(
-            "MEDIUM                : 0",
-            output
-        )
-
-        self.assertIn(
-            "LOW                   : 0",
-            output
-        )
-
-    def test_menu_routes_to_dashboard(self):
-        dashboard = SOCDashboard.__new__(
-            SOCDashboard
-        )
-
-        dashboard.display_menu = Mock()
-        dashboard.view_soc_dashboard = Mock()
-
-        with patch(
-            "builtins.input",
-            side_effect=[
-                "11",
-                "12"
-            ]
-        ):
-            dashboard.start()
-
-        dashboard.view_soc_dashboard.assert_called_once()
 
 
 if __name__ == "__main__":

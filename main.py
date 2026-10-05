@@ -564,6 +564,10 @@ class SOCDashboard:
                 "higher than the tracked count."
             )
 
+    # ============================================================
+    # PHASE 27 - SOC DASHBOARD
+    # ============================================================
+
     def view_soc_dashboard(self):
         incidents = self.get_incidents()
 
@@ -596,12 +600,13 @@ class SOCDashboard:
             "INVESTIGATING",
             "RESOLVED"
         ):
+            count = DashboardAnalytics.get_status_count(
+                analytics,
+                status
+            )
+
             print(
-                f"{status:<22}: "
-                f"{DashboardAnalytics.get_status_count(
-                    analytics,
-                    status
-                )}"
+                f"{status:<22}: {count}"
             )
 
         print("\nSEVERITY")
@@ -613,26 +618,24 @@ class SOCDashboard:
             "MEDIUM",
             "LOW"
         ):
+            count = DashboardAnalytics.get_severity_count(
+                analytics,
+                severity
+            )
+
             print(
-                f"{severity:<22}: "
-                f"{DashboardAnalytics.get_severity_count(
-                    analytics,
-                    severity
-                )}"
+                f"{severity:<22}: {count}"
             )
 
         print("\nTOP THREAT TYPES")
         print("-" * 60)
 
-        top_threats = (
-            DashboardAnalytics.top_threats(
-                analytics
-            )
+        top_threats = DashboardAnalytics.top_threats(
+            analytics
         )
 
         if not top_threats:
-            print("No threats detected.")
-
+            print("No threat data available.")
         else:
             for threat_type, count in top_threats:
                 print(
@@ -642,15 +645,12 @@ class SOCDashboard:
         print("\nTOP SOURCE IPS")
         print("-" * 60)
 
-        top_source_ips = (
-            DashboardAnalytics.top_source_ips(
-                analytics
-            )
+        top_source_ips = DashboardAnalytics.top_source_ips(
+            analytics
         )
 
         if not top_source_ips:
             print("No source IP data available.")
-
         else:
             for source_ip, count in top_source_ips:
                 print(
@@ -658,7 +658,6 @@ class SOCDashboard:
                 )
 
         print("=" * 60)
-
     def add_investigation_note(self):
         self.view_incidents()
 
