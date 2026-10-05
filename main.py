@@ -1,4 +1,3 @@
-
 from collections import Counter
 
 from core.security_engine import SecurityEngine
@@ -10,6 +9,7 @@ from services.log_history import LogHistory
 from services.event_timeline import EventTimeline
 from services.evidence_correlator import EvidenceCorrelator
 from services.evidence_integrity import EvidenceIntegrity
+from services.audit_trail import AuditTrail
 
 
 class SOCDashboard:
@@ -100,7 +100,8 @@ class SOCDashboard:
         print("7. Export Incident Report")
         print("8. View SOC Event Timeline")
         print("9. Verify Exported Report")
-        print("10. Exit")
+        print("10. View Evidence Audit Trail")
+        print("11. Exit")
 
         print("=" * 45)
 
@@ -696,12 +697,30 @@ class SOCDashboard:
                 )
             )
 
+            json_hash = (
+                EvidenceIntegrity.calculate_hash(
+                    json_path
+                )
+            )
+
+            AuditTrail.record_event(
+                action="EXPORT",
+                report_path=json_path,
+                sha256=json_hash,
+                status="CREATED",
+                incident_id=selected.incident_id
+            )
+
             print(
                 f"JSON report: {json_path}"
             )
 
             print(
                 f"SHA-256 manifest: {json_manifest}"
+            )
+
+            print(
+                "Audit event recorded: EXPORT"
             )
 
         if choice in (
@@ -721,12 +740,30 @@ class SOCDashboard:
                 )
             )
 
+            pdf_hash = (
+                EvidenceIntegrity.calculate_hash(
+                    pdf_path
+                )
+            )
+
+            AuditTrail.record_event(
+                action="EXPORT",
+                report_path=pdf_path,
+                sha256=pdf_hash,
+                status="CREATED",
+                incident_id=selected.incident_id
+            )
+
             print(
                 f"PDF report: {pdf_path}"
             )
 
             print(
                 f"SHA-256 manifest: {pdf_manifest}"
+            )
+
+            print(
+                "Audit event recorded: EXPORT"
             )
 
     def view_event_timeline(self):
@@ -847,6 +884,21 @@ class SOCDashboard:
             result["report"]
         )
 
+        sha256 = result.get(
+            "actual_sha256"
+        )
+
+        AuditTrail.record_event(
+            action="VERIFY",
+            report_path=report_path,
+            sha256=sha256,
+            status=status
+        )
+
+        print(
+            "Audit event recorded: VERIFY"
+        )
+
         if status == "VERIFIED":
             print(
                 "The report matches "
@@ -892,6 +944,85 @@ class SOCDashboard:
                 "or cannot be read."
             )
 
+    def view_audit_trail(self):
+        print(
+            "\n===== EVIDENCE AUDIT TRAIL ====="
+        )
+
+        print(
+            "1. View all audit events"
+        )
+
+        print(
+            "2. Filter by action"
+        )
+
+        print(
+            "3. Filter by incident ID"
+        )
+
+        print(
+            "4. Return to Main Menu"
+        )
+
+        choice = input(
+            "Select an option: "
+        ).strip()
+
+        if choice == "1":
+            AuditTrail.display_events()
+
+        elif choice == "2":
+            print("\nAvailable actions:")
+            print("1. EXPORT")
+            print("2. VERIFY")
+
+            action_choice = input(
+                "Select action: "
+            ).strip()
+
+            actions = {
+                "1": "EXPORT",
+                "2": "VERIFY"
+            }
+
+            if action_choice not in actions:
+                print("Invalid action.")
+                return
+
+            events = AuditTrail.get_events(
+                action=actions[action_choice]
+            )
+
+            AuditTrail.display_events(
+                events
+            )
+
+        elif choice == "3":
+            incident_id = input(
+                "Enter Incident ID: "
+            ).strip()
+
+            if not incident_id:
+                print(
+                    "Incident ID cannot be empty."
+                )
+                return
+
+            events = AuditTrail.get_events(
+                incident_id=incident_id
+            )
+
+            AuditTrail.display_events(
+                events
+            )
+
+        elif choice == "4":
+            return
+
+        else:
+            print("Invalid choice.")
+
     def start(self):
         while True:
             self.display_menu()
@@ -928,6 +1059,9 @@ class SOCDashboard:
                 self.verify_exported_report()
 
             elif choice == "10":
+                self.view_audit_trail()
+
+            elif choice == "11":
                 print(
                     "Exiting CyberShield..."
                 )

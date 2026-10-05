@@ -1,4 +1,3 @@
-
 import json
 import tempfile
 import unittest
@@ -188,6 +187,9 @@ class TestEvidenceExport(unittest.TestCase):
             Path(str(pdf_path) + ".sha256.json")
         )
 
+        json_hash = "a" * 64
+        pdf_hash = "b" * 64
+
         with (
             patch.object(
                 dashboard,
@@ -221,6 +223,16 @@ class TestEvidenceExport(unittest.TestCase):
                     pdf_manifest
                 ]
             ) as create_manifest,
+            patch(
+                "main.EvidenceIntegrity.calculate_hash",
+                side_effect=[
+                    json_hash,
+                    pdf_hash
+                ]
+            ) as calculate_hash,
+            patch(
+                "main.AuditTrail.record_event"
+            ) as record_event,
         ):
             dashboard.export_incident_report()
 
@@ -257,6 +269,44 @@ class TestEvidenceExport(unittest.TestCase):
             (pdf_path,)
         )
 
+        # SHA-256 must be calculated for both reports.
+        self.assertEqual(
+            calculate_hash.call_count,
+            2
+        )
+
+        self.assertEqual(
+            calculate_hash.call_args_list[0].args,
+            (json_path,)
+        )
+
+        self.assertEqual(
+            calculate_hash.call_args_list[1].args,
+            (pdf_path,)
+        )
+
+        # Each exported report must create an audit event.
+        self.assertEqual(
+            record_event.call_count,
+            2
+        )
+
+        record_event.assert_any_call(
+            action="EXPORT",
+            report_path=json_path,
+            sha256=json_hash,
+            status="CREATED",
+            incident_id="INC-TEST"
+        )
+
+        record_event.assert_any_call(
+            action="EXPORT",
+            report_path=pdf_path,
+            sha256=pdf_hash,
+            status="CREATED",
+            incident_id="INC-TEST"
+        )
+
     def test_cancel_does_not_collect_evidence(self):
         dashboard = SOCDashboard.__new__(
             SOCDashboard
@@ -286,11 +336,19 @@ class TestEvidenceExport(unittest.TestCase):
             patch(
                 "main.EvidenceIntegrity.create_manifest"
             ) as create_manifest,
+            patch(
+                "main.EvidenceIntegrity.calculate_hash"
+            ) as calculate_hash,
+            patch(
+                "main.AuditTrail.record_event"
+            ) as record_event,
         ):
             dashboard.export_incident_report()
 
         find_evidence.assert_not_called()
         create_manifest.assert_not_called()
+        calculate_hash.assert_not_called()
+        record_event.assert_not_called()
 
 
 if __name__ == "__main__":
