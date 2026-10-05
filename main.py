@@ -10,6 +10,7 @@ from services.event_timeline import EventTimeline
 from services.evidence_correlator import EvidenceCorrelator
 from services.evidence_integrity import EvidenceIntegrity
 from services.audit_trail import AuditTrail
+from services.dashboard_analytics import DashboardAnalytics
 
 
 class SOCDashboard:
@@ -101,7 +102,8 @@ class SOCDashboard:
         print("8. View SOC Event Timeline")
         print("9. Verify Exported Report")
         print("10. View Evidence Audit Trail")
-        print("11. Exit")
+        print("11. View SOC Dashboard")
+        print("12. Exit")
 
         print("=" * 45)
 
@@ -561,6 +563,101 @@ class SOCDashboard:
                 "Historical event totals may be "
                 "higher than the tracked count."
             )
+
+    def view_soc_dashboard(self):
+        incidents = self.get_incidents()
+
+        analytics = DashboardAnalytics.calculate(
+            incidents
+        )
+
+        print("\n" + "=" * 60)
+        print("              CYBERSHIELD SOC DASHBOARD")
+        print("=" * 60)
+
+        print("\nINCIDENT OVERVIEW")
+        print("-" * 60)
+
+        print(
+            f"Total Incidents       : "
+            f"{analytics['total_incidents']}"
+        )
+
+        print(
+            f"Total Alerts          : "
+            f"{analytics['total_alerts']}"
+        )
+
+        print("\nSTATUS")
+        print("-" * 60)
+
+        for status in (
+            "OPEN",
+            "INVESTIGATING",
+            "RESOLVED"
+        ):
+            print(
+                f"{status:<22}: "
+                f"{DashboardAnalytics.get_status_count(
+                    analytics,
+                    status
+                )}"
+            )
+
+        print("\nSEVERITY")
+        print("-" * 60)
+
+        for severity in (
+            "CRITICAL",
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+        ):
+            print(
+                f"{severity:<22}: "
+                f"{DashboardAnalytics.get_severity_count(
+                    analytics,
+                    severity
+                )}"
+            )
+
+        print("\nTOP THREAT TYPES")
+        print("-" * 60)
+
+        top_threats = (
+            DashboardAnalytics.top_threats(
+                analytics
+            )
+        )
+
+        if not top_threats:
+            print("No threats detected.")
+
+        else:
+            for threat_type, count in top_threats:
+                print(
+                    f"{threat_type:<35}: {count}"
+                )
+
+        print("\nTOP SOURCE IPS")
+        print("-" * 60)
+
+        top_source_ips = (
+            DashboardAnalytics.top_source_ips(
+                analytics
+            )
+        )
+
+        if not top_source_ips:
+            print("No source IP data available.")
+
+        else:
+            for source_ip, count in top_source_ips:
+                print(
+                    f"{source_ip:<35}: {count}"
+                )
+
+        print("=" * 60)
 
     def add_investigation_note(self):
         self.view_incidents()
@@ -1062,6 +1159,9 @@ class SOCDashboard:
                 self.view_audit_trail()
 
             elif choice == "11":
+                self.view_soc_dashboard()
+
+            elif choice == "12":
                 print(
                     "Exiting CyberShield..."
                 )
