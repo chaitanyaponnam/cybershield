@@ -11,6 +11,7 @@ from services.evidence_correlator import EvidenceCorrelator
 from services.evidence_integrity import EvidenceIntegrity
 from services.audit_trail import AuditTrail
 from services.dashboard_analytics import DashboardAnalytics
+from services.incident_filter import IncidentFilter
 
 
 class SOCDashboard:
@@ -91,7 +92,6 @@ class SOCDashboard:
         print("\n" + "=" * 45)
         print("       CYBERSHIELD - MINI SOC")
         print("=" * 45)
-
         print("1. Run Security Scan")
         print("2. View Security Incidents")
         print("3. Investigate an Incident")
@@ -103,8 +103,8 @@ class SOCDashboard:
         print("9. Verify Exported Report")
         print("10. View Evidence Audit Trail")
         print("11. View SOC Dashboard")
-        print("12. Exit")
-
+        print("12. Incident Search & Filtering")
+        print("13. Exit")
         print("=" * 45)
 
     def scan_menu(self):
@@ -658,6 +658,149 @@ class SOCDashboard:
                 )
 
         print("=" * 60)
+
+        def incident_search_and_filter(self):
+            while True:
+                print("\n" + "=" * 45)
+                print("      INCIDENT SEARCH & FILTER")
+                print("=" * 45)
+    
+                print("1. Filter by Severity")
+                print("2. Filter by Status")
+                print("3. Filter by Threat Type")
+                print("4. Filter by Source IP")
+                print("5. Search by Incident ID")
+                print("6. Show All Incidents")
+                print("7. Back")
+    
+                print("=" * 45)
+    
+                choice = input(
+                    "Select an option: "
+                ).strip()
+    
+                incidents = self.get_incidents()
+    
+                if choice == "1":
+                    severity = input(
+                        "Enter severity "
+                        "(LOW/MEDIUM/HIGH/CRITICAL): "
+                    ).strip()
+    
+                    results = IncidentFilter.by_severity(
+                        incidents,
+                        severity
+                    )
+    
+                    self.display_filtered_incidents(results)
+    
+                elif choice == "2":
+                    status = input(
+                        "Enter status "
+                        "(OPEN/INVESTIGATING/RESOLVED): "
+                    ).strip()
+    
+                    results = IncidentFilter.by_status(
+                        incidents,
+                        status
+                    )
+    
+                    self.display_filtered_incidents(results)
+    
+                elif choice == "3":
+                    threat_type = input(
+                        "Enter threat type: "
+                    ).strip()
+    
+                    results = IncidentFilter.by_threat_type(
+                        incidents,
+                        threat_type
+                    )
+    
+                    self.display_filtered_incidents(results)
+    
+                elif choice == "4":
+                    source_ip = input(
+                        "Enter source IP: "
+                    ).strip()
+    
+                    results = IncidentFilter.by_source_ip(
+                        incidents,
+                        source_ip
+                    )
+    
+                    self.display_filtered_incidents(results)
+    
+                elif choice == "5":
+                    incident_id = input(
+                        "Enter Incident ID: "
+                    ).strip()
+    
+                    results = IncidentFilter.by_incident_id(
+                        incidents,
+                        incident_id
+                    )
+    
+                    self.display_filtered_incidents(results)
+    
+                elif choice == "6":
+                    self.display_filtered_incidents(
+                        incidents
+                    )
+    
+                elif choice == "7":
+                    return
+                
+    
+                else:
+                    print("Invalid choice.")
+
+
+    @staticmethod
+    def display_filtered_incidents(incidents):
+        print("\n" + "=" * 60)
+        print("              FILTERED INCIDENTS")
+        print("=" * 60)
+
+        if not incidents:
+            print("No matching incidents found.")
+            print("=" * 60)
+            return
+
+        for incident in incidents:
+            print(
+                f"\nIncident ID : "
+                f"{incident.incident_id}"
+            )
+
+            print(
+                f"Title       : "
+                f"{incident.title}"
+            )
+
+            print(
+                f"Severity    : "
+                f"{incident.severity}"
+            )
+
+            print(
+                f"Status      : "
+                f"{incident.status}"
+            )
+
+            print(
+                f"Alerts      : "
+                f"{len(incident.alerts)}"
+            )
+
+            print("-" * 60)
+
+        print(
+            f"Total Matches: {len(incidents)}"
+        )
+
+        print("=" * 60)
+
     def add_investigation_note(self):
         self.view_incidents()
 
@@ -1119,6 +1262,134 @@ class SOCDashboard:
         else:
             print("Invalid choice.")
 
+    def incident_search_and_filter(self):
+        while True:
+            print("\n" + "=" * 45)
+            print("      INCIDENT SEARCH & FILTER")
+            print("=" * 45)
+            print("1. Filter by Severity")
+            print("2. Filter by Status")
+            print("3. Filter by Threat Type")
+            print("4. Filter by Source IP")
+            print("5. Search by Incident ID")
+            print("6. Show All Incidents")
+            print("7. Back")
+            print("=" * 45)
+            choice = input(
+                "Select an option: "
+            ).strip()
+            incidents = self.get_incidents()
+            if choice == "1":
+                severity = input(
+                    "Enter severity "
+                    "(LOW/MEDIUM/HIGH/CRITICAL): "
+                ).strip()
+                results = IncidentFilter.by_severity(
+                    incidents,
+                    severity
+                )
+                self.display_filtered_incidents(
+                    results
+                )
+            elif choice == "2":
+                status = input(
+                    "Enter status "
+                    "(OPEN/INVESTIGATING/RESOLVED): "
+                ).strip()
+                results = IncidentFilter.by_status(
+                    incidents,
+                    status
+                )
+                self.display_filtered_incidents(
+                    results
+                )
+            elif choice == "3":
+                threat_type = input(
+                    "Enter threat type: "
+                ).strip()
+                results = IncidentFilter.by_threat_type(
+                    incidents,
+                    threat_type
+                )
+                self.display_filtered_incidents(
+                    results
+                )
+            elif choice == "4":
+                source_ip = input(
+                    "Enter source IP: "
+                ).strip()
+                results = IncidentFilter.by_source_ip(
+                    incidents,
+                    source_ip
+                )
+                self.display_filtered_incidents(
+                    results
+                )
+            elif choice == "5":
+                incident_id = input(
+                    "Enter Incident ID: "
+                ).strip()
+                results = IncidentFilter.by_incident_id(
+                    incidents,
+                    incident_id
+                )
+                self.display_filtered_incidents(
+                    results
+                )
+            elif choice == "6":
+                self.display_filtered_incidents(
+                    incidents
+                )
+            elif choice == "7":
+                return
+            else:
+                print("Invalid choice.")
+
+    @staticmethod
+    def display_filtered_incidents(incidents):
+        print("\n" + "=" * 60)
+        print("              FILTERED INCIDENTS")
+        print("=" * 60)
+
+        if not incidents:
+            print("No matching incidents found.")
+            print("=" * 60)
+            return
+
+        for incident in incidents:
+            print(
+                f"\nIncident ID : "
+                f"{incident.incident_id}"
+            )
+
+            print(
+                f"Title       : "
+                f"{incident.title}"
+            )
+
+            print(
+                f"Severity    : "
+                f"{incident.severity}"
+            )
+
+            print(
+                f"Status      : "
+                f"{incident.status}"
+            )
+
+            print(
+                f"Alerts      : "
+                f"{len(incident.alerts)}"
+            )
+
+            print("-" * 60)
+
+        print(
+            f"Total Matches: {len(incidents)}"
+        )
+
+        print("=" * 60)
+
     def start(self):
         while True:
             self.display_menu()
@@ -1161,6 +1432,9 @@ class SOCDashboard:
                 self.view_soc_dashboard()
 
             elif choice == "12":
+                self.incident_search_and_filter()
+
+            elif choice == "13":
                 print(
                     "Exiting CyberShield..."
                 )
