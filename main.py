@@ -12,6 +12,7 @@ from services.evidence_integrity import EvidenceIntegrity
 from services.audit_trail import AuditTrail
 from services.dashboard_analytics import DashboardAnalytics
 from services.incident_filter import IncidentFilter
+from services.risk_scorer import RiskScorer
 
 
 class SOCDashboard:
@@ -104,7 +105,8 @@ class SOCDashboard:
         print("10. View Evidence Audit Trail")
         print("11. View SOC Dashboard")
         print("12. Incident Search & Filtering")
-        print("13. Exit")
+        print("13. Incident Risk Priority")
+        print("14. Exit")
         print("=" * 45)
 
     def scan_menu(self):
@@ -1435,6 +1437,9 @@ class SOCDashboard:
                 self.incident_search_and_filter()
 
             elif choice == "13":
+                self.view_incident_risk()
+
+            elif choice == "14":
                 print(
                     "Exiting CyberShield..."
                 )
@@ -1444,6 +1449,58 @@ class SOCDashboard:
                 print(
                     "Invalid choice. Try again."
                 )
+    def view_incident_risk(self):
+        incidents = self.get_incidents()
+
+        print("\n" + "=" * 70)
+        print("                 INCIDENT RISK PRIORITY")
+        print("=" * 70)
+
+        if not incidents:
+            print("No incidents available.")
+            print("=" * 70)
+            return
+
+        risk_entries = []
+
+        for incident in incidents:
+            score = RiskScorer.calculate(incident)
+            risk_level = RiskScorer.classify(score)
+
+            risk_entries.append(
+                (
+                    incident,
+                    score,
+                    risk_level
+                )
+            )
+
+        risk_entries.sort(
+            key=lambda entry: entry[1],
+            reverse=True
+        )
+
+        print(
+            f"{'Incident ID':<38}"
+            f"{'Score':<10}"
+            f"Risk Level"
+        )
+
+        print("-" * 70)
+
+        for incident, score, risk_level in risk_entries:
+            print(
+                f"{incident.incident_id:<38}"
+                f"{score:<10}"
+                f"{risk_level}"
+            )
+
+        print("-" * 70)
+        print(
+            f"Total Incidents: "
+            f"{len(risk_entries)}"
+        )
+        print("=" * 70)
 
 
 if __name__ == "__main__":
