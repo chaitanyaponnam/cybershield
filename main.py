@@ -13,6 +13,7 @@ from services.audit_trail import AuditTrail
 from services.dashboard_analytics import DashboardAnalytics
 from services.incident_filter import IncidentFilter
 from services.risk_scorer import RiskScorer
+from services.response_manager import ResponseManager
 
 
 class SOCDashboard:
@@ -20,6 +21,7 @@ class SOCDashboard:
     def __init__(self):
         self.engine = SecurityEngine()
         self.manager = IncidentManager()
+        self.response_manager = ResponseManager()
 
     def get_incidents(self):
         return list(self.manager.incidents.values())
@@ -106,7 +108,8 @@ class SOCDashboard:
         print("11. View SOC Dashboard")
         print("12. Incident Search & Filtering")
         print("13. Incident Risk Priority")
-        print("14. Exit")
+        print("14. Incident Response Actions")
+        print("15. Exit")
         print("=" * 45)
 
     def scan_menu(self):
@@ -1440,6 +1443,9 @@ class SOCDashboard:
                 self.view_incident_risk()
 
             elif choice == "14":
+                self.incident_response_actions()
+
+            elif choice == "15":
                 print(
                     "Exiting CyberShield..."
                 )
@@ -1449,6 +1455,114 @@ class SOCDashboard:
                 print(
                     "Invalid choice. Try again."
                 )
+    def incident_response_actions(self):
+        while True:
+            print("\n" + "=" * 50)
+            print("          INCIDENT RESPONSE ACTIONS")
+            print("=" * 50)
+            print("1. Acknowledge Incident")
+            print("2. Escalate Incident")
+            print("3. Contain Incident")
+            print("4. Resolve Incident")
+            print("5. View Response History")
+            print("6. Back")
+            print("=" * 50)
+
+            choice = input("Select an option: ").strip()
+
+            if choice == "6":
+                return
+
+            action_map = {
+                "1": "ACKNOWLEDGE",
+                "2": "ESCALATE",
+                "3": "CONTAIN",
+                "4": "RESOLVE",
+            }
+
+            if choice == "5":
+                incident_id = input(
+                    "Enter Incident ID (leave blank for all): "
+                ).strip()
+
+                history = self.response_manager.get_history(
+                    incident_id or None
+                )
+
+                if not history:
+                    print("No response actions found.")
+                    continue
+
+                print("\n===== RESPONSE HISTORY =====")
+
+                for record in history:
+                    print(f"\nAction ID   : {record['action_id']}")
+                    print(f"Incident ID : {record['incident_id']}")
+                    print(f"Action      : {record['action']}")
+                    print(f"Analyst     : {record['performed_by']}")
+                    print(f"Timestamp   : {record['timestamp']}")
+                    print(f"Details     : {record['details']}")
+
+                continue
+
+            action = action_map.get(choice)
+
+            if action is None:
+                print("Invalid choice. Try again.")
+                continue
+
+            incident_id = input("Enter Incident ID: ").strip()
+
+            incident_exists = any(
+                incident.incident_id == incident_id
+                for incident in self.get_incidents()
+            )
+
+            if not incident_exists:
+                print("Incident not found. No action recorded.")
+                continue
+
+            performed_by = input(
+                "Enter analyst name (default: SOC Analyst): "
+            ).strip() or "SOC Analyst"
+
+            details = input(
+                "Enter action details (optional): "
+            ).strip()
+
+            try:
+                record = self.response_manager.record_action(
+                    incident_id=incident_id,
+                    action=action,
+                    performed_by=performed_by,
+                    details=details,
+                )
+            except ValueError as exc:
+                print(f"Could not record action: {exc}")
+                continue
+
+            print("\nResponse action recorded successfully.")
+            print(f"Action ID   : {record['action_id']}")
+            print(f"Incident ID : {record['incident_id']}")
+            print(f"Action      : {record['action']}")
+            print(f"Timestamp   : {record['timestamp']}")
+
+    def view_response_history(self):
+        """Display all recorded response actions."""
+        history = self.response_manager.get_history()
+
+        if not history:
+            print("No response actions recorded.")
+            return
+
+        for record in history:
+            print(
+                f"{record['timestamp']} | "
+                f"{record['incident_id']} | "
+                f"{record['action']} | "
+                f"{record['performed_by']}"
+            )
+
     def view_incident_risk(self):
         incidents = self.get_incidents()
 
